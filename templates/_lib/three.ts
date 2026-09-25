@@ -30,6 +30,9 @@ export async function imageTexture(bitmap: ImageBitmap) {
 }
 
 // A texture that follows a video layer. Call sync() in render() (after Pullup resolved frames).
+// Unlike images, three.js uploads video frames as plain RGBA8 and decodes them only in its
+// built-in materials: in a custom ShaderMaterial the sample is still sRGB-encoded, so decode it
+// with `sRGBTransferEOTF(texel)` (video only) or the result comes out washed out.
 export function videoTexture(layer: VideoLayer) {
   const texture = new THREE.VideoFrameTexture()
   texture.colorSpace = THREE.SRGBColorSpace
@@ -55,8 +58,9 @@ export function coverScale(w: number, h: number, W: number, H: number) {
 }
 
 // Custom ShaderMaterial fragment shaders must end with `#include <colorspace_fragment>`:
-// sRGB textures are decoded to linear when sampled, and three.js only converts back to the sRGB
-// output for its built-in materials. Without it everything renders too dark.
+// image textures are decoded to linear when sampled, and three.js only converts back to the sRGB
+// output for its built-in materials. Without it everything renders too dark. (Video samples need
+// decoding by hand first — see videoTexture.)
 export const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
   void main() {

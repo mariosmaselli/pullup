@@ -15,7 +15,8 @@ templates/
 New folders show up in **Templates** automatically (Vite picks them up; no registration).
 The full contract with comments is in [`src/shared/template.ts`](../src/shared/template.ts).
 Look at [`text-story`](text-story) (canvas 2D still) and [`slow-zoom`](slow-zoom) (Three.js video,
-GSAP, video texture) first.
+GSAP, video texture) first; [`shader-transition`](shader-transition) and [`planes-3d`](planes-3d)
+show multi-clip WebGL.
 
 ## The lifecycle
 
@@ -38,11 +39,23 @@ GSAP, video texture) first.
   `ctx.layoutText()` (it returns per-word positions) and animate them yourself.
 - **Randomness:** `ctx.random()` in `setup()` only; `ctx.hash(frame, k)` for per-frame noise (grain).
 - **Opaque output:** WebGL `{ alpha: false }` / 2D `{ alpha: false }` (or always write alpha 1).
+- **Transparent 2D layers** (text drawn onto its own canvas, then composited): create them with
+  `getContext('2d', { willReadFrequently: true })`. GPU-rasterised large glyphs can differ by a
+  few pixels between runs; the CPU rasteriser is exact, so renders stay reproducible.
 - **Colour:** keep everything sRGB (`renderer.outputColorSpace = SRGBColorSpace`, textures
-  `colorSpace = SRGBColorSpace`). Pullup tags the MP4 BT.709. **Custom `ShaderMaterial`s must end
-  the fragment shader with `#include <colorspace_fragment>`** — textures are sampled as linear
-  light and three.js only converts built-in materials back to sRGB; without it the render is
-  noticeably darker than the source.
+  `colorSpace = SRGBColorSpace`). Pullup tags the MP4 BT.709. In a custom `ShaderMaterial`:
+  - **End the fragment shader with `#include <colorspace_fragment>`** — image textures are sampled
+    as linear light and three.js only converts built-in materials back to sRGB; without it the
+    render is noticeably darker than the source.
+  - **Decode video samples yourself: `sRGBTransferEOTF(texture2D(uVideo, uv))`** — three.js
+    uploads video frames undecoded (only its built-in materials decode them), so without it video
+    comes out washed out. Images must not be decoded twice: use a uniform flag per input
+    (see `slow-zoom`, `device-frame`, `shader-transition`).
+  - Composite type and add grain in sRGB (`sRGBTransferOETF` → mix → back with
+    `sRGBTransferEOTF`): grain added in linear light is much stronger in the shadows and pushes
+    the bitrate over Instagram's limit.
+  - Check colour with a real recording, not a test pattern of pure colours (it can't show gamma
+    errors).
 - **Design units:** layout is designed at 1080 px wide; multiply by `ctx.scale` (the preview is
   half size).
 - **Images** come upright and colour-managed (≤ 2160 px). For Three.js use `imageTexture()` from

@@ -21,24 +21,30 @@ const fragment = /* glsl */ `
   uniform float uDim;
   uniform float uCaptionAlpha;
   uniform float uCaptionShift;
+  uniform float uDecode;
   varying vec2 vUv;
 
   float rand(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uNoise * 91.7) * 43758.5453); }
 
   void main() {
     vec2 uv = (vUv - 0.5) * uCover / uZoom + 0.5 + uDrift;
-    vec3 color = texture2D(uMedia, clamp(uv, 0.0, 1.0)).rgb;
+    vec4 texel = texture2D(uMedia, clamp(uv, 0.0, 1.0));
+    // three.js uploads video frames as plain RGBA8 (built-in materials decode them in their
+    // shader), so video samples are still sRGB-encoded here; images are decoded by the GPU.
+    vec3 color = uDecode > 0.5 ? sRGBTransferEOTF(texel).rgb : texel.rgb;
 
     // Darken the bottom for caption legibility, fading in with the caption.
     float shade = smoothstep(0.55, 0.0, vUv.y) * uDim * uCaptionAlpha;
     color *= 1.0 - shade;
 
+    // Caption and grain are composited in sRGB, like type drawn on a canvas; grain added in
+    // linear light would be several times stronger in the shadows (and costly to encode).
+    vec3 c = sRGBTransferOETF(vec4(color, 1.0)).rgb;
     vec4 caption = texture2D(uCaption, vUv + vec2(0.0, -uCaptionShift));
-    color = mix(color, caption.rgb, caption.a * uCaptionAlpha);
-
-    color += (rand(vUv * 1000.0) - 0.5) * uGrain;
-    gl_FragColor = vec4(color, 1.0);
-    // Textures are decoded to linear light; convert back to the sRGB output.
+    c = mix(c, sRGBTransferOETF(caption).rgb, caption.a * uCaptionAlpha);
+    c += (rand(vUv * 1000.0) - 0.5) * uGrain;
+    gl_FragColor = sRGBTransferEOTF(vec4(clamp(c, 0.0, 1.0), 1.0));
+    // Back to linear above; three converts to the sRGB output.
     #include <colorspace_fragment>
   }
 `
@@ -108,6 +114,7 @@ const slowZoom: TemplateFactory = (ctx) => {
           uDim: { value: caption ? p.dim : 0 },
           uCaptionAlpha: { value: 0 },
           uCaptionShift: { value: 0 },
+          uDecode: { value: media.kind === 'video' ? 1 : 0 },
         },
       })
       ;({ scene, camera } = fullscreenScene(material))
