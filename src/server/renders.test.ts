@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Render } from '@shared/template.ts'
@@ -149,6 +149,55 @@ describe('renders', () => {
     createApp(db) // startup
     const after = (await (await app.request(`/api/renders/${render.id}`)).json()) as Render
     expect(after).toMatchObject({ status: 'failed', error: 'Interrupted before it finished' })
+  })
+
+  it("zips a post's current frames in order and lists what is missing", async () => {
+    const profile = (
+      db.prepare("SELECT id FROM profiles WHERE slug = 'mario'").get() as { id: string }
+    ).id
+    db.prepare("INSERT INTO ideas (id, title, origin) VALUES ('zip-idea', 'Zip', 'manual')").run()
+    db.prepare(
+      `INSERT INTO posts (id, idea_id, profile_id, platform, format, current_revision_id)
+       VALUES ('zip-post', 'zip-idea', ?, 'ig_story', 'story_seq', 'zip-rev')`
+    ).run(profile)
+    db.prepare(
+      `INSERT INTO post_revisions (id, post_id, segments, author) VALUES ('zip-rev', 'zip-post', ?, 'me')`
+    ).run(
+      JSON.stringify([
+        { text: 'First', assetId: null, kind: 'text', template: { id: 'test-template' } },
+        { text: 'Second', assetId: null, kind: 'text' },
+      ])
+    )
+    const res = await app.request(
+      '/api/renders',
+      json({
+        templateId: 'test-template',
+        templateVersion: 1,
+        kind: 'image',
+        aspect: '9:16',
+        inputs: { ...inputs, text: { body: 'First' } },
+        postId: 'zip-post',
+        segmentIndex: 0,
+      })
+    )
+    const render = (await res.json()) as Render
+    const jpg = join(library.root, 'frame1.jpg')
+    ffmpeg('-f', 'lavfi', '-i', 'color=c=blue:s=1080x1920', '-frames:v', '1', jpg)
+    await app.request(`/api/renders/${render.id}/file`, {
+      method: 'PUT',
+      body: new Uint8Array(readFileSync(jpg)),
+      headers: { 'Content-Type': 'image/jpeg' },
+    })
+
+    const zip = await app.request('/api/posts/zip-post/frames.zip')
+    expect(zip.status).toBe(200)
+    expect(zip.headers.get('content-type')).toBe('application/zip')
+    const out = join(library.root, 'frames.zip')
+    writeFileSync(out, Buffer.from(await zip.arrayBuffer()))
+    const listing = execFileSync('unzip', ['-l', out]).toString()
+    expect(listing).toMatch(/01-frame\.jpg/)
+    expect(listing).toMatch(/MISSING\.txt/)
+    expect(execFileSync('unzip', ['-p', out, 'MISSING.txt']).toString()).toMatch(/2/)
   })
 
   it('moves deleted renders to trash', async () => {

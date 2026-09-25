@@ -225,8 +225,11 @@ export const useUpdatePost = () =>
 
 // ── Renders ───────────────────────────────────────────────────────────────────────────────
 
-export const useRenders = () =>
-  useQuery({ queryKey: ['renders'], queryFn: () => api<Render[]>('/renders') })
+export const useRenders = (postId?: string) =>
+  useQuery({
+    queryKey: ['renders', postId ?? 'all'],
+    queryFn: () => api<Render[]>(postId ? `/renders?post=${postId}` : '/renders'),
+  })
 
 export function useDeleteRender() {
   const queryClient = useQueryClient()

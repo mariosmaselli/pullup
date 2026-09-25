@@ -1,13 +1,20 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import type { Platform } from '@shared/constants.ts'
 import type { Asset, Segment } from '@shared/types.ts'
+import type { Render } from '@shared/template.ts'
+import { renderForFrame } from '@shared/frames.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import { assetTitle } from '../../lib/format.ts'
 import { PLATFORMS } from '../../lib/platforms.ts'
+import { compatibleTemplates, frameInputs, withTemplate } from '../../lib/frame-templates.ts'
+import { useRenders } from '../../lib/queries.ts'
+import { renderTemplate, resolveMedia } from '../../render/client.ts'
+import { templateMeta } from '../../render/templates.ts'
 import { FramePreview } from './FramePreview.tsx'
 import './FramesEditor.scss'
 
 interface Props {
+  postId: string
   platform: Platform
   segments: Segment[]
   caption: string
@@ -29,10 +36,27 @@ const move = <T,>(list: T[], from: number, to: number) => {
 // Instagram stories (9:16 frames) and carousels (4:5 slides + caption). Each frame has on-screen
 // text and optionally one image or video from the idea's material.
 export function FramesEditor(props: Props) {
-  const { platform, segments, caption, sources, byId, copied, onChange, onCaption, onCopy } = props
+  const {
+    postId,
+    platform,
+    segments,
+    caption,
+    sources,
+    byId,
+    copied,
+    onChange,
+    onCaption,
+    onCopy,
+  } = props
   const config = PLATFORMS[platform]
   const frames = config.frames as Exclude<typeof config.frames, false>
-  const visual = sources.filter((a) => a.kind === 'image' || a.kind === 'video')
+  // The idea's images/videos, plus anything a frame already uses (it may not be a source).
+  const visual = [
+    ...sources,
+    ...segments
+      .map((s) => s.assetId && byId.get(s.assetId))
+      .filter((a): a is Asset => !!a && !sources.includes(a)),
+  ].filter((a, i, all) => (a.kind === 'image' || a.kind === 'video') && all.indexOf(a) === i)
 
   // Stable identity per frame, so reordering moves the DOM (and focus) with the frame.
   const nextKey = useRef(0)
@@ -48,15 +72,109 @@ export function FramesEditor(props: Props) {
   const update = (i: number, patch: Partial<Segment>) =>
     onChange(segments.map((s, j) => (j === i ? { ...s, ...patch } : s)))
 
+  // ── Rendering frames with templates ──────────────────────────────────────────────────────
+  const { data: renders = [] } = useRenders(postId)
+  const [rendering, setRendering] = useState<Record<number, number>>({}) // index → progress 0–1
+  const [renderErrors, setRenderErrors] = useState<Record<number, string>>({})
+  const effective = segments.map((s) => withTemplate(platform, s))
+  const status = effective.map((frame, i) => renderForFrame(renders, frame, i))
+  const pending = status.map((s, i) => (!s.current ? i : -1)).filter((i) => i >= 0)
+  const busy = Object.keys(rendering).length > 0
+
+  async function renderFrame(i: number): Promise<Render | null> {
+    const frame = effective[i]!
+    const meta = frame.template && templateMeta(frame.template.id)
+    if (!meta) return null
+    // Keep the template choice on the frame so saving the draft remembers it.
+    if (!segments[i]!.template) update(i, { template: frame.template })
+    setRendering((r) => ({ ...r, [i]: 0 }))
+    setRenderErrors(({ [i]: _, ...rest }) => rest)
+    try {
+      const media = frame.assetId ? await resolveMedia([frame.assetId]) : []
+      return await renderTemplate({
+        meta,
+        inputs: frameInputs(platform, frame, meta, media),
+        postId,
+        segmentIndex: i,
+        onProgress: (done, total) => setRendering((r) => ({ ...r, [i]: done / total })),
+      })
+    } catch (err) {
+      setRenderErrors((e) => ({ ...e, [i]: (err as Error).message }))
+      return null
+    } finally {
+      setRendering(({ [i]: _, ...rest }) => rest)
+    }
+  }
+
+  async function renderAll() {
+    for (const i of pending) await renderFrame(i)
+  }
+
   return (
     <div className="frames-editor flex flex-col">
+      <div className="frames-editor__toolbar flex items-center justify-between">
+        <span className="-meta frames-editor__muted">
+          {segments.length - pending.length}/{segments.length} {frames.noun}s rendered
+        </span>
+        <div className="flex items-center">
+          <Button size="s" disabled={busy || !pending.length} onClick={renderAll}>
+            {busy ? 'Rendering…' : pending.length ? `Render ${pending.length}` : 'All rendered'}
+          </Button>
+          <a
+            className="frames-editor__download -p1"
+            aria-disabled={pending.length === segments.length}
+            href={
+              pending.length === segments.length ? undefined : `/api/posts/${postId}/frames.zip`
+            }
+            download
+          >
+            Download all
+          </a>
+        </div>
+      </div>
+
       {segments.map((segment, i) => {
         const asset = segment.assetId ? byId.get(segment.assetId) : undefined
         const length = config.length(segment.text)
+        const frame = effective[i]!
+        const { render, current } = status[i]!
+        const progress = rendering[i]
+        const options = compatibleTemplates(platform, segment)
         return (
           <div key={keys.current[i]} className="frames-editor__frame flex">
-            <div className="frames-editor__preview shrink-0">
-              <FramePreview segment={segment} asset={asset} aspect={frames.aspect} />
+            <div className="frames-editor__preview flex flex-col shrink-0">
+              {render?.url ? (
+                <div className="frames-editor__render" data-aspect={frames.aspect}>
+                  {render.kind === 'video' ? (
+                    <video
+                      src={render.url}
+                      poster={render.posterUrl ?? undefined}
+                      muted
+                      loop
+                      playsInline
+                      autoPlay
+                    />
+                  ) : (
+                    <img src={render.url} alt="" />
+                  )}
+                </div>
+              ) : (
+                <FramePreview segment={segment} asset={asset} aspect={frames.aspect} />
+              )}
+              <span
+                className="frames-editor__state -meta"
+                data-state={
+                  progress !== undefined ? 'busy' : current ? 'ok' : render ? 'stale' : 'none'
+                }
+              >
+                {progress !== undefined
+                  ? `Rendering ${Math.round(progress * 100)}%`
+                  : current
+                    ? 'Rendered'
+                    : render
+                      ? 'Out of date'
+                      : 'Not rendered'}
+              </span>
             </div>
             <div className="frames-editor__fields flex flex-col flex-1">
               <div className="flex items-center justify-between">
@@ -112,11 +230,16 @@ export function FramesEditor(props: Props) {
                   aria-label={`Media for ${frames.noun} ${i + 1}`}
                   onChange={(e) => {
                     const picked = visual.find((a) => a.id === e.target.value)
+                    // A new kind of media may need a different template: fall back to the default.
                     update(
                       i,
                       picked
-                        ? { assetId: picked.id, kind: picked.kind as 'image' | 'video' }
-                        : { assetId: null, kind: 'text' }
+                        ? {
+                            assetId: picked.id,
+                            kind: picked.kind as 'image' | 'video',
+                            template: null,
+                          }
+                        : { assetId: null, kind: 'text', template: null }
                     )
                   }}
                 >
@@ -132,6 +255,64 @@ export function FramesEditor(props: Props) {
                   {length}/{config.limit}
                 </span>
               </div>
+              <div className="frames-editor__template flex items-center">
+                <select
+                  className="frames-editor__media -p1"
+                  value={frame.template?.id ?? ''}
+                  aria-label={`Template for ${frames.noun} ${i + 1}`}
+                  onChange={(e) =>
+                    update(i, { template: e.target.value ? { id: e.target.value } : null })
+                  }
+                >
+                  {options.length ? null : <option value="">No template fits</option>}
+                  {options.map((meta) => (
+                    <option key={meta.id} value={meta.id}>
+                      {meta.name}
+                      {meta.kind === 'video' ? ' · video' : ''}
+                    </option>
+                  ))}
+                </select>
+                {frame.template && templateMeta(frame.template.id)?.kind === 'video' ? (
+                  <label className="frames-editor__duration -p1 flex items-center">
+                    <input
+                      type="number"
+                      min={templateMeta(frame.template.id)?.duration?.min ?? 3}
+                      max={templateMeta(frame.template.id)?.duration?.max ?? 15}
+                      step={0.5}
+                      value={
+                        frame.template.duration ??
+                        templateMeta(frame.template.id)?.duration?.default ??
+                        6
+                      }
+                      onChange={(e) =>
+                        update(i, {
+                          template: { ...frame.template!, duration: Number(e.target.value) },
+                        })
+                      }
+                    />
+                    s
+                  </label>
+                ) : null}
+                <Button
+                  size="s"
+                  variant={current ? 'ghost' : 'secondary'}
+                  disabled={progress !== undefined || !frame.template}
+                  onClick={() => void renderFrame(i)}
+                >
+                  {current ? 'Re-render' : 'Render'}
+                </Button>
+                {render?.url ? (
+                  <a className="frames-editor__file -p1" href={render.url} download>
+                    ↓
+                  </a>
+                ) : null}
+              </div>
+              {renderErrors[i] ? (
+                <p className="frames-editor__error -p1">{renderErrors[i]}</p>
+              ) : null}
+              {current && render?.warnings.length ? (
+                <p className="frames-editor__error -p1">{render.warnings.join(' · ')}</p>
+              ) : null}
             </div>
           </div>
         )

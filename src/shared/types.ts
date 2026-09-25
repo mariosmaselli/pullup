@@ -159,6 +159,14 @@ export interface Segment {
   text: string
   assetId?: string | null
   kind?: SegmentKind | null
+  // Instagram frames/slides: which template renders this frame, and its settings.
+  template?: FrameTemplate | null
+}
+
+export interface FrameTemplate {
+  id: string
+  params?: Record<string, unknown>
+  duration?: number
 }
 
 export interface PostRevision {

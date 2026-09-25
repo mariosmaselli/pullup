@@ -94,9 +94,12 @@ export function cleanSegments(
   return segments.map((s) => {
     const kind =
       s.assetId && (!allowed || allowed.has(s.assetId)) ? kinds.get(s.assetId) : undefined
-    return kind
+    const frame: Segment = kind
       ? { text: s.text, assetId: s.assetId!, kind }
       : { text: s.text, assetId: null, kind: 'text' }
+    // Keep the frame's template choice (Instagram frames are rendered by templates).
+    if (s.template) frame.template = s.template
+    return frame
   })
 }
 

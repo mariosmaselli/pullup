@@ -104,7 +104,7 @@ export function createApp(db: DB, options: AppOptions = {}) {
     .route('/profiles', profileRoutes(db))
     .route('/assets', assetRoutes({ assets, projects, capture, processor, ai }))
     .route('/ideas', ideaRoutes(ideas, ai))
-    .route('/posts', postRoutes(posts, ai))
+    .route('/posts', postRoutes(posts, ai, renders))
     .route('/projects', projectRoutes(projects))
     .route('/events', eventRoutes())
     .all('*', (c) => c.json({ error: 'Not found' }, 404))

@@ -28,8 +28,8 @@ const BASIS_LABEL: Record<Claim['basis'], string> = {
 }
 
 const sameContent = (a: Segment[], b: Segment[]) =>
-  JSON.stringify(a.map((s) => [s.text, s.assetId ?? null])) ===
-  JSON.stringify(b.map((s) => [s.text, s.assetId ?? null]))
+  JSON.stringify(a.map((s) => [s.text, s.assetId ?? null, s.template ?? null])) ===
+  JSON.stringify(b.map((s) => [s.text, s.assetId ?? null, s.template ?? null]))
 
 export function DraftView() {
   const { id } = useParams({ from: '/drafts/$id' })
@@ -193,6 +193,7 @@ function DraftEditor({
 
           {config.frames ? (
             <FramesEditor
+              postId={post.id}
               platform={post.platform}
               segments={segments}
               caption={caption}
