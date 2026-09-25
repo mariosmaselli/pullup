@@ -2,6 +2,7 @@ import { Link, useParams } from '@tanstack/react-router'
 import { ViewHeader } from '../../components/ViewHeader/ViewHeader.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { AssetBrowser } from '../../components/AssetBrowser/AssetBrowser.tsx'
+import { ProjectPosts } from '../../components/ProjectPosts/ProjectPosts.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
 import { useAssets, useProject, useUpdateProject, type ProjectPatch } from '../../lib/queries.ts'
 import type { ProjectStatus } from '@shared/constants.ts'
@@ -71,6 +72,8 @@ export function ProjectView() {
           />
         </div>
       </section>
+
+      <ProjectPosts projectId={project.id} />
 
       <AssetBrowser
         assets={assets}

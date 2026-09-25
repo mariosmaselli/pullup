@@ -10,7 +10,7 @@ import { CaptureError, createCapture } from './services/capture.ts'
 import { createProcessor } from './services/processing.ts'
 import { createProjectStore } from './services/projects.ts'
 import { createIdeaStore } from './services/ideas.ts'
-import { createPostStore } from './services/posts.ts'
+import { createPostStore, PostRuleError } from './services/posts.ts'
 import { createRenderStore } from './services/renders.ts'
 import { createAi, providerFor, type ProviderFactory } from './ai/index.ts'
 import { createKeyManager, verifyWithAnthropic, type KeyVerifier } from './ai/key.ts'
@@ -114,6 +114,9 @@ export function createApp(db: DB, options: AppOptions = {}) {
   app.onError((err, c) => {
     if (err instanceof CaptureError) return c.json({ error: err.message }, err.status)
     if (err instanceof AiError) return c.json({ error: err.message }, err.status)
+    if (err instanceof PostRuleError) {
+      return c.json({ error: err.message, assetIds: err.assetIds }, err.status)
+    }
     if (err instanceof z.ZodError) return c.json({ error: z.prettifyError(err) }, 400)
     if (err instanceof SyntaxError) return c.json({ error: 'Invalid JSON body' }, 400)
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)

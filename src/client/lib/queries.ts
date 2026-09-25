@@ -168,10 +168,15 @@ export function useDraftIdea() {
   })
 }
 
-export const usePosts = (status?: string) =>
+export const usePosts = (status?: string, projectId?: string) =>
   useQuery({
-    queryKey: ['posts', status ?? 'open'],
-    queryFn: () => api<Post[]>(`/posts${status ? `?status=${status}` : ''}`),
+    queryKey: ['posts', status ?? 'open', projectId ?? 'all'],
+    queryFn: () => {
+      const query = new URLSearchParams()
+      if (status) query.set('status', status)
+      if (projectId) query.set('project', projectId)
+      return api<Post[]>(`/posts${query.size ? `?${query}` : ''}`)
+    },
   })
 
 export const usePost = (id: string) =>
@@ -218,10 +223,14 @@ export const useUpdatePost = () =>
     }: {
       id: string
       status?: PostStatus
+      scheduledFor?: string | null
       publicUrl?: string | null
       publishedAt?: string | null
     }) => api<PostDetail>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
   )
+
+export const useApproveMedia = () =>
+  usePostMutation((id: string) => api<PostDetail>(`/posts/${id}/approve-media`, { method: 'POST' }))
 
 // ── Renders ───────────────────────────────────────────────────────────────────────────────
 

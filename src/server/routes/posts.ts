@@ -41,17 +41,30 @@ const revisionBody = z.object({
     .optional(),
 })
 
+const isoDate = z.iso.datetime({ offset: true })
+
 const patchBody = z.object({
   status: z.enum(POST_STATUS).optional(),
-  scheduledFor: z.string().nullable().optional(),
-  publishedAt: z.string().nullable().optional(),
+  scheduledFor: isoDate.nullable().optional(),
+  publishedAt: isoDate.nullable().optional(),
   publicUrl: z.url().nullable().optional(),
 })
 
 export function postRoutes(posts: PostStore, ai: Ai, renders: RenderStore) {
   return (
     new Hono()
-      .get('/', (c) => c.json(posts.list(statusQuery.parse(c.req.query('status')))))
+      .get('/', (c) =>
+        c.json(
+          posts.list(statusQuery.parse(c.req.query('status')), c.req.query('project') || undefined)
+        )
+      )
+
+      .post('/:id/approve-media', (c) => {
+        const id = c.req.param('id')
+        if (!posts.exists(id)) return c.json({ error: 'Post not found' }, 404)
+        posts.approveMedia(id)
+        return c.json(posts.detail(id))
+      })
 
       // Every Instagram frame's current render, in order, zipped — ready to AirDrop and post.
       .get('/:id/frames.zip', async (c) => {

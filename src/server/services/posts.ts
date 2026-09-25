@@ -47,6 +47,20 @@ const toRevision = (r: RevisionRow, existing?: Set<string>): PostRevision => ({
   createdAt: r.created_at,
 })
 
+// A publishing rule was broken (e.g. approving a post whose media is still private).
+export class PostRuleError extends Error {
+  constructor(
+    message: string,
+    public status: 400 | 409 = 409,
+    public assetIds: string[] = []
+  ) {
+    super(message)
+  }
+}
+
+// Statuses that mean "this can go public" — only allowed once every piece of media is approved.
+const PUBLIC_STATUSES: PostStatus[] = ['approved', 'scheduled', 'published']
+
 // ── Post content rules, shared by manual edits and the AI tasks ─────────────────────────────
 
 // Instagram frames/slides carry their own media; X and LinkedIn media is attached per post.
@@ -218,14 +232,39 @@ export function createPostStore(db: DB) {
     db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as PostRow | undefined
 
   return {
-    list(statuses: PostStatus[]): Post[] {
+    list(statuses: PostStatus[], projectId?: string): Post[] {
       const rows = db
         .prepare(
-          `SELECT * FROM posts WHERE status IN (SELECT value FROM json_each(?))
-           ORDER BY updated_at DESC LIMIT 300`
+          `SELECT * FROM posts WHERE status IN (SELECT value FROM json_each(@statuses))
+           ${projectId ? 'AND project_id = @projectId' : ''}
+           ORDER BY coalesce(published_at, scheduled_for, updated_at) DESC LIMIT 300`
         )
-        .all(JSON.stringify(statuses)) as PostRow[]
+        .all({ statuses: JSON.stringify(statuses), projectId: projectId ?? null }) as PostRow[]
       return hydrate(rows)
+    },
+
+    // Media in this post that isn't approved for public use yet.
+    privateMedia(postId: string): { id: string; title: string }[] {
+      return db
+        .prepare(
+          `SELECT DISTINCT a.id, coalesce(nullif(a.title, ''), a.original_name, a.url, 'Untitled') AS title
+           FROM post_media m JOIN assets a ON a.id = m.asset_id
+           WHERE m.post_id = ? AND a.visibility = 'private'`
+        )
+        .all(postId) as { id: string; title: string }[]
+    },
+
+    // Explicit "these can be public" for everything the post uses.
+    approveMedia(postId: string) {
+      const changed = db
+        .prepare(
+          `UPDATE assets SET visibility = 'approved', updated_at = ?
+           WHERE visibility = 'private' AND id IN (SELECT asset_id FROM post_media WHERE post_id = ?)`
+        )
+        .run(now(), postId).changes
+      if (changed) notify('assets')
+      notify('posts')
+      return changed
     },
 
     detail(id: string): PostDetail | undefined {
@@ -308,8 +347,37 @@ export function createPostStore(db: DB) {
         publicUrl?: string | null
       }
     ) {
+      const post = row(id)!
+      // Clearing the date of a scheduled post puts it back in "approved".
+      const unschedule =
+        values.scheduledFor === null && post.status === 'scheduled' && !values.status
+      const status = unschedule ? 'approved' : (values.status ?? post.status)
+      const scheduledFor =
+        values.scheduledFor !== undefined ? values.scheduledFor : post.scheduled_for
+
+      if (
+        values.status &&
+        PUBLIC_STATUSES.includes(values.status) &&
+        values.status !== post.status
+      ) {
+        const blocked = this.privateMedia(id)
+        if (blocked.length) {
+          throw new PostRuleError(
+            `Approve the media for public use first: ${blocked.map((a) => a.title).join(', ')}`,
+            409,
+            blocked.map((a) => a.id)
+          )
+        }
+      }
+      if (status === 'scheduled' && !scheduledFor) {
+        throw new PostRuleError('Pick a date to schedule this post.', 400)
+      }
+
       const columns: Record<string, unknown> = {}
-      if (values.status !== undefined) columns.status = values.status
+      if (values.status !== undefined || unschedule) columns.status = status
+      if (values.status === 'published' && values.publishedAt === undefined && !post.published_at) {
+        columns.published_at = now()
+      }
       if (values.scheduledFor !== undefined) columns.scheduled_for = values.scheduledFor
       if (values.publishedAt !== undefined) columns.published_at = values.publishedAt
       if (values.publicUrl !== undefined) columns.public_url = values.publicUrl

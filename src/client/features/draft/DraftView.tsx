@@ -19,6 +19,7 @@ import {
 } from '../../lib/queries.ts'
 import { TextPostEditor } from './TextPostEditor.tsx'
 import { FramesEditor } from './FramesEditor.tsx'
+import { PublishPanel } from './PublishPanel.tsx'
 import './DraftView.scss'
 
 const BASIS_LABEL: Record<Claim['basis'], string> = {
@@ -179,16 +180,24 @@ function DraftEditor({
 
           <header className="draft-view__header flex items-center justify-between">
             <h1 className="-t2">{config.title(segments)}</h1>
-            <Segmented<PostStatus>
-              label="Status"
-              value={['draft', 'review', 'approved'].includes(post.status) ? post.status : 'draft'}
-              onChange={(status) => update.mutate({ id: post.id, status })}
-              options={[
-                { value: 'draft', label: STATUS_LABEL.draft },
-                { value: 'review', label: 'Review' },
-                { value: 'approved', label: STATUS_LABEL.approved },
-              ]}
-            />
+            {post.status === 'scheduled' || post.status === 'published' ? (
+              <span className="draft-view__status -meta" data-status={post.status}>
+                {STATUS_LABEL[post.status]}
+              </span>
+            ) : (
+              <Segmented<PostStatus>
+                label="Status"
+                value={
+                  ['draft', 'review', 'approved'].includes(post.status) ? post.status : 'draft'
+                }
+                onChange={(status) => update.mutate({ id: post.id, status })}
+                options={[
+                  { value: 'draft', label: STATUS_LABEL.draft },
+                  { value: 'review', label: 'Review' },
+                  { value: 'approved', label: STATUS_LABEL.approved },
+                ]}
+              />
+            )}
           </header>
 
           {config.frames ? (
@@ -247,11 +256,7 @@ function DraftEditor({
               A post is over {config.limit} characters — {config.label} will reject it.
             </p>
           ) : null}
-          {privateMedia.length ? (
-            <p className="draft-view__warning -p1">
-              Media in this draft is still marked private. Approve it for public use before posting.
-            </p>
-          ) : null}
+
           {error ? <p className="draft-view__warning -p1">{error.message}</p> : null}
 
           {/* Revise with AI */}
@@ -298,6 +303,8 @@ function DraftEditor({
 
         {/* Facts, questions, history */}
         <aside className="draft-view__side flex flex-col shrink-0">
+          <PublishPanel post={post} media={media} privateMedia={privateMedia} />
+
           {unconfirmed.length ? (
             <p className="draft-view__warning -p1">
               {unconfirmed.length} detail{unconfirmed.length === 1 ? '' : 's'} to confirm before

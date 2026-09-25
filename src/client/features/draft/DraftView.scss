@@ -190,3 +190,15 @@
     }
   }
 }
+
+.draft-view__status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--surface-muted);
+
+  &[data-status='published'] {
+    color: #fff;
+    background: #3aa66a;
+  }
+}
