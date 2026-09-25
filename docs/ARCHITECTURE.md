@@ -91,8 +91,13 @@ src/server/ai/
   tasks/<task>/index.ts       builds input, calls provider, logs ai_runs, returns typed result
 ```
 
-Tasks: `analyze-asset` (fast model), `discover-ideas`, `generate-drafts`, `revise-draft` (strong model).
-No agents — each task is one structured call.
+Tasks (all Claude Opus 5, effort per task): `analyze-asset` (low), `generate-ideas` (medium),
+`draft-post` (high, 2–3 angles), `revise-post` (high). No agents — each task is one structured
+call via `messages.parse` + Zod, with server-side refusal fallback (`fallbacks: "default"`).
+Shared voice and ground rules live in `ai/prompts/voice.md`; each task has `prompt.vN.md`.
+`ai/context.ts` builds the input: Mario's titles/notes labelled as authoritative, earlier AI output
+labelled unverified, and images (originals ≤3.5 MB, else 1600 px JPEG; up to 4–6 video frames).
+Idea sources and claim citations are validated against the assets actually sent.
 
 ## Screens
 
@@ -107,9 +112,9 @@ preview, claims and questions, revisions.
 |---|---|---|
 | M0 | Scaffold, SQLite schema + migrations, library folder, app shell | ✅ App runs, all views reachable, Settings reads the library |
 | M1 | Capture: drop, paste, notes, links (OG fetch), inbox-folder watcher, ffmpeg posters/frames, Inbox grid | ✅ Recordings get posters + frames; pasted URLs get previews; inbox folder imports live |
-| M2 | Organize: projects CRUD, assign, tags, visibility, asset side panel | A recording lives in a project, marked private |
-| M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | Accurate description + tags; cost logged |
-| M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | **First end-to-end workflow** |
+| M2 | Organize: projects CRUD, assign, tags, visibility, asset side panel | ◐ Projects, assignment, visibility, client-work AI default done; tags + filters later |
+| M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | ✅ Built + tested with a fake provider; live run pending API key |
+| M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow** built; live run pending API key |
 | M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | A post goes draft → published |
 | M6 | Instagram: story sequences, carousel outlines, vertical-crop flags, per-profile voice | One recording → X post + story sequence |
 | M7 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |

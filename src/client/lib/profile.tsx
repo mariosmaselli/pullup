@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
+import { useProfiles } from './queries.ts'
 
 // Global identity filter: 'all' or a profile slug. Remembered per browser.
 type ProfileFilter = 'all' | (string & {})
@@ -37,4 +38,15 @@ export function useProfileFilter() {
   const ctx = useContext(ProfileContext)
   if (!ctx) throw new Error('useProfileFilter must be used inside <ProfileProvider>')
   return ctx
+}
+
+// The identity to write as: the filtered profile, or Mario when showing all.
+export function useWritingProfile() {
+  const { profile } = useProfileFilter()
+  const { data: profiles = [] } = useProfiles()
+  return (
+    profiles.find((p) => p.slug === profile) ??
+    profiles.find((p) => p.slug === 'mario') ??
+    profiles[0]
+  )
 }

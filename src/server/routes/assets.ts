@@ -13,6 +13,7 @@ import { CaptureError, type Capture } from '../services/capture.ts'
 import { now, type AssetStore } from '../services/assets.ts'
 import type { Processor } from '../services/processing.ts'
 import type { ProjectStore } from '../services/projects.ts'
+import type { Ai } from '../ai/index.ts'
 
 const textSource = z.enum(['url', 'note', 'paste', 'shortcut']).optional()
 
@@ -43,11 +44,12 @@ const uploadSource = z.enum(ASSET_SOURCES).catch('drop')
 interface Deps {
   assets: AssetStore
   projects: ProjectStore
+  ai: Ai
   capture: Capture
   processor: Processor
 }
 
-export function assetRoutes({ assets, projects, capture, processor }: Deps) {
+export function assetRoutes({ assets, projects, capture, processor, ai }: Deps) {
   return (
     new Hono()
       .get('/', (c) => {
@@ -133,6 +135,13 @@ export function assetRoutes({ assets, projects, capture, processor }: Deps) {
           ...(projectId === undefined ? {} : { project_id: projectId }),
           ...(triaged === undefined ? {} : { triaged_at: triaged ? now() : null }),
         })
+        return c.json(assets.get(id))
+      })
+
+      .post('/:id/analyze', async (c) => {
+        const id = c.req.param('id')
+        if (!assets.row(id)) return c.json({ error: 'Asset not found' }, 404)
+        await ai.analyzeAsset(id)
         return c.json(assets.get(id))
       })
 

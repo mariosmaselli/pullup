@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import type { SystemInfo } from '@shared/types.ts'
 import type { DB } from '../db/index.ts'
+import type { Ai } from '../ai/index.ts'
 import { library } from '../library.ts'
 import { ffmpegVersion } from '../lib/ffmpeg.ts'
 import pkg from '../../../package.json' with { type: 'json' }
 
-export function systemRoutes(db: DB) {
+export function systemRoutes(db: DB, ai: Ai) {
   const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n
 
   return new Hono().get('/', (c) => {
@@ -13,6 +14,13 @@ export function systemRoutes(db: DB) {
       version: pkg.version,
       library: { root: library.root, inbox: library.inbox, database: library.database },
       ffmpeg: ffmpegVersion(),
+      ai: {
+        enabled: ai.enabled,
+        runs: count('SELECT count(*) AS n FROM ai_runs WHERE error IS NULL'),
+        costUsd: (
+          db.prepare('SELECT coalesce(sum(cost_usd), 0) AS n FROM ai_runs').get() as { n: number }
+        ).n,
+      },
       counts: {
         inbox: count('SELECT count(*) AS n FROM assets WHERE triaged_at IS NULL'),
         assets: count('SELECT count(*) AS n FROM assets'),

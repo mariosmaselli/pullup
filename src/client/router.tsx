@@ -6,6 +6,7 @@ import { ProjectsView } from './features/projects/ProjectsView.tsx'
 import { ProjectView } from './features/project/ProjectView.tsx'
 import { IdeasView } from './features/ideas/IdeasView.tsx'
 import { DraftsView } from './features/drafts/DraftsView.tsx'
+import { DraftView } from './features/draft/DraftView.tsx'
 import { CalendarView } from './features/calendar/CalendarView.tsx'
 import { SettingsView } from './features/settings/SettingsView.tsx'
 
@@ -49,6 +50,11 @@ const draftsRoute = createRoute({
   path: '/drafts',
   component: DraftsView,
 })
+const draftRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/drafts/$id',
+  component: DraftView,
+})
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/calendar',
@@ -68,6 +74,7 @@ const routeTree = rootRoute.addChildren([
   projectRoute,
   ideasRoute,
   draftsRoute,
+  draftRoute,
   calendarRoute,
   settingsRoute,
 ])

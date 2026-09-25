@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Asset, Profile, Project, SystemInfo } from '@shared/types.ts'
-import type { ProjectStatus, Visibility } from '@shared/constants.ts'
+import type { Asset, Idea, Post, PostDetail, Profile, Project, SystemInfo } from '@shared/types.ts'
+import type { IdeaStatus, PostStatus, ProjectStatus, Visibility } from '@shared/constants.ts'
 import { api } from './api.ts'
 
 export const useSystem = () =>
@@ -58,7 +58,7 @@ export function useUpdateProject() {
 export function useInvalidateAssets() {
   const queryClient = useQueryClient()
   return () => {
-    for (const key of ['assets', 'projects', 'system']) {
+    for (const key of ['assets', 'projects', 'ideas', 'posts', 'system']) {
       queryClient.invalidateQueries({ queryKey: [key] })
     }
   }
@@ -98,3 +98,103 @@ export function useReprocessAsset() {
     onSuccess: invalidate,
   })
 }
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+
+export function useAnalyzeAsset() {
+  const invalidate = useInvalidateAssets()
+  return useMutation({
+    mutationFn: (id: string) => api<Asset>(`/assets/${id}/analyze`, { method: 'POST' }),
+    onSuccess: invalidate,
+  })
+}
+
+export const useIdeas = (status = 'suggested,saved') =>
+  useQuery({ queryKey: ['ideas', status], queryFn: () => api<Idea[]>(`/ideas?status=${status}`) })
+
+export function useGenerateIdeas() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { assetIds: string[]; profileId?: string | null; instruction?: string }) =>
+      api<Idea[]>('/ideas/generate', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
+  })
+}
+
+export function useUpdateIdea() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: IdeaStatus }) =>
+      api<Idea>(`/ideas/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
+  })
+}
+
+export function useDraftIdea() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; profileId: string; instruction?: string }) =>
+      api<{ postIds: string[] }>(`/ideas/${id}/draft`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ideas'] })
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    },
+  })
+}
+
+export const usePosts = (status?: string) =>
+  useQuery({
+    queryKey: ['posts', status ?? 'open'],
+    queryFn: () => api<Post[]>(`/posts${status ? `?status=${status}` : ''}`),
+  })
+
+export const usePost = (id: string) =>
+  useQuery({ queryKey: ['posts', 'detail', id], queryFn: () => api<PostDetail>(`/posts/${id}`) })
+
+function usePostMutation<V>(request: (vars: V) => Promise<PostDetail>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (post) => {
+      queryClient.setQueryData(['posts', 'detail', post.id], post)
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    },
+  })
+}
+
+export const useSavePostRevision = () =>
+  usePostMutation(({ id, segments }: { id: string; segments: { text: string }[] }) =>
+    api<PostDetail>(`/posts/${id}/revisions`, {
+      method: 'POST',
+      body: JSON.stringify({ segments }),
+    })
+  )
+
+export const useRevisePost = () =>
+  usePostMutation(({ id, instruction }: { id: string; instruction: string }) =>
+    api<PostDetail>(`/posts/${id}/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    })
+  )
+
+export const useRestoreRevision = () =>
+  usePostMutation(({ id, revisionId }: { id: string; revisionId: string }) =>
+    api<PostDetail>(`/posts/${id}/restore/${revisionId}`, { method: 'POST' })
+  )
+
+export const useUpdatePost = () =>
+  usePostMutation(
+    ({
+      id,
+      ...body
+    }: {
+      id: string
+      status?: PostStatus
+      publicUrl?: string | null
+      publishedAt?: string | null
+    }) => api<PostDetail>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  )

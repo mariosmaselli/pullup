@@ -1,0 +1,83 @@
+.idea-card {
+  gap: 28px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.idea-card__body {
+  gap: 10px;
+  min-width: 0;
+}
+
+.idea-card__chips {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.idea-card__chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+
+  &.-strong {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+}
+
+.idea-card__saved {
+  margin-left: auto;
+  color: var(--signal);
+}
+
+.idea-card__rationale,
+.idea-card__muted {
+  color: var(--muted);
+}
+
+.idea-card__questions {
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--signal) 7%, transparent);
+
+  .-meta {
+    color: var(--signal);
+    text-transform: uppercase;
+  }
+
+  ul {
+    margin-top: 4px;
+    padding-left: 16px;
+  }
+}
+
+.idea-card__actions {
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.idea-card__sources {
+  width: 160px;
+  gap: 8px;
+}
+
+.idea-card__source {
+  gap: 4px;
+  color: var(--muted);
+
+  img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-radius: var(--radius-s);
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

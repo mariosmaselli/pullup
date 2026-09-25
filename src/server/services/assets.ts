@@ -1,4 +1,4 @@
-import type { Asset, AssetDerivative, LinkMeta } from '@shared/types.ts'
+import type { Asset, AssetAnalysis, AssetDerivative, LinkMeta } from '@shared/types.ts'
 import type { AssetKind, AssetSource, ProcessingStatus } from '@shared/constants.ts'
 import type { DB } from '../db/index.ts'
 import { fileUrl } from '../library.ts'
@@ -43,9 +43,36 @@ export interface DerivativeRow {
   created_at: string
 }
 
+export interface AnalysisRow {
+  id: string
+  asset_id: string
+  description: string
+  subjects: string
+  suggested_tags: string
+  suggested_project_id: string | null
+  hooks: string
+  questions: string
+  created_at: string
+}
+
+export const toAnalysis = (row: AnalysisRow): AssetAnalysis => ({
+  id: row.id,
+  description: row.description,
+  subjects: JSON.parse(row.subjects),
+  suggestedTags: JSON.parse(row.suggested_tags),
+  suggestedProjectId: row.suggested_project_id,
+  hooks: JSON.parse(row.hooks),
+  questions: JSON.parse(row.questions),
+  createdAt: row.created_at,
+})
+
 export const now = () => new Date().toISOString()
 
-export function toAsset(row: AssetRow, derivatives: DerivativeRow[]): Asset {
+export function toAsset(
+  row: AssetRow,
+  derivatives: DerivativeRow[],
+  analysis?: AnalysisRow
+): Asset {
   const mapped = derivatives
     .sort((a, b) => (a.time_ms ?? 0) - (b.time_ms ?? 0))
     .map<AssetDerivative>((d) => ({
@@ -89,6 +116,7 @@ export function toAsset(row: AssetRow, derivatives: DerivativeRow[]): Asset {
     body: row.body,
     thumbUrl: mapped.find((d) => d.role === 'thumb')?.url ?? null,
     derivatives: mapped,
+    analysis: analysis ? toAnalysis(analysis) : null,
   }
 }
 
@@ -108,9 +136,23 @@ export function createAssetStore(db: DB) {
     return byAsset
   }
 
+  // Latest analysis per asset.
+  const analysesFor = (ids: string[]) => {
+    if (!ids.length) return new Map<string, AnalysisRow>()
+    const rows = db
+      .prepare(
+        `SELECT * FROM asset_analyses WHERE asset_id IN (SELECT value FROM json_each(?))
+         ORDER BY created_at`
+      )
+      .all(JSON.stringify(ids)) as AnalysisRow[]
+    return new Map(rows.map((r) => [r.asset_id, r]))
+  }
+
   const hydrate = (rows: AssetRow[]) => {
-    const derivatives = derivativesFor(rows.map((r) => r.id))
-    return rows.map((row) => toAsset(row, derivatives.get(row.id) ?? []))
+    const ids = rows.map((r) => r.id)
+    const derivatives = derivativesFor(ids)
+    const analyses = analysesFor(ids)
+    return rows.map((row) => toAsset(row, derivatives.get(row.id) ?? [], analyses.get(row.id)))
   }
 
   return {
@@ -157,6 +199,19 @@ export function createAssetStore(db: DB) {
         `UPDATE assets SET ${columns.map((c) => `${c} = @${c}`).join(', ')}, updated_at = @updated_at WHERE id = @id`
       ).run({ ...values, id, updated_at: now() })
       notify('assets')
+    },
+
+    rows(ids: string[]): AssetRow[] {
+      if (!ids.length) return []
+      const found = db
+        .prepare('SELECT * FROM assets WHERE id IN (SELECT value FROM json_each(?))')
+        .all(JSON.stringify(ids)) as AssetRow[]
+      // Keep the caller's order.
+      return ids.map((id) => found.find((r) => r.id === id)).filter((r): r is AssetRow => !!r)
+    },
+
+    hydrate(rows: AssetRow[]): Asset[] {
+      return hydrate(rows)
     },
 
     remove(id: string) {

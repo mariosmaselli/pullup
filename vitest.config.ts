@@ -12,5 +12,7 @@ export default defineConfig({
     // Tests never touch the real library.
     env: { PULLUP_LIBRARY: join(tmpdir(), `pullup-test-${Date.now()}`) },
     testTimeout: 30_000,
+    // Test files share one throwaway library folder.
+    fileParallelism: false,
   },
 })

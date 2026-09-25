@@ -10,6 +10,7 @@ import {
 import { Button } from '../Button/Button.tsx'
 import { ProjectPicker } from '../ProjectPicker/ProjectPicker.tsx'
 import { Segmented } from '../Segmented/Segmented.tsx'
+import { AssetAi } from '../AssetAi/AssetAi.tsx'
 import './AssetPanel.scss'
 
 const SOURCE_LABEL: Record<Asset['source'], string> = {
@@ -237,6 +238,8 @@ export function AssetPanel({ asset, onClose }: Props) {
             onSave={(notes) => save({ notes })}
           />
         </div>
+
+        <AssetAi asset={asset} />
 
         <dl className="asset-panel__details">
           {details

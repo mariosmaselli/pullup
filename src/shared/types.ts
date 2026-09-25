@@ -1,7 +1,13 @@
 // API response shapes shared by server and client.
 import type {
+  Angle,
   AssetKind,
   AssetSource,
+  IdeaOrigin,
+  IdeaStatus,
+  Platform,
+  PostFormat,
+  PostStatus,
   ProcessingStatus,
   ProjectStatus,
   Visibility,
@@ -23,6 +29,7 @@ export interface SystemInfo {
     database: string
   }
   ffmpeg: string | null
+  ai: { enabled: boolean; runs: number; costUsd: number }
   counts: {
     inbox: number
     assets: number
@@ -95,6 +102,84 @@ export interface Asset {
   body: string | null
   thumbUrl: string | null
   derivatives: AssetDerivative[]
+  analysis: AssetAnalysis | null
+}
+
+// AI suggestions for an asset — kept apart from what Mario entered.
+export interface AssetAnalysis {
+  id: string
+  description: string
+  subjects: string[]
+  suggestedTags: string[]
+  suggestedProjectId: string | null
+  hooks: string[]
+  questions: string[]
+  createdAt: string
+}
+
+export interface Idea {
+  id: string
+  title: string
+  summary: string
+  angle: Angle | null
+  format: PostFormat | null
+  platforms: Platform[]
+  rationale: string
+  questions: string[]
+  origin: IdeaOrigin
+  status: IdeaStatus
+  profileId: string | null
+  projectId: string | null
+  sources: { assetId: string; note: string }[]
+  createdAt: string
+}
+
+// basis: 'source' = stated in Mario's material, 'framing' = editorial framing,
+// 'unconfirmed' = plausible but needs Mario to confirm before publishing.
+export interface Claim {
+  text: string
+  basis: 'source' | 'framing' | 'unconfirmed'
+  assetId: string | null
+}
+
+export interface PostRevision {
+  id: string
+  segments: { text: string }[]
+  author: 'ai' | 'me'
+  instruction: string | null
+  claims: Claim[]
+  questions: string[]
+  createdAt: string
+}
+
+export interface Post {
+  id: string
+  ideaId: string | null
+  profileId: string
+  projectId: string | null
+  platform: Platform
+  format: PostFormat
+  angle: Angle | null
+  status: PostStatus
+  scheduledFor: string | null
+  publishedAt: string | null
+  publicUrl: string | null
+  current: PostRevision | null
+  mediaAssetIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PostDetail extends Post {
+  revisions: PostRevision[]
+  sourceAssetIds: string[]
+  // Other drafts generated from the same idea for the same platform.
+  siblings: { id: string; angle: Angle | null; status: PostStatus }[]
+}
+
+export interface AiRunSummary {
+  runs: number
+  costUsd: number
 }
 
 export interface CaptureResult {

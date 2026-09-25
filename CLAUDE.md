@@ -20,6 +20,8 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
   in [styles/utilities/_typography.scss](src/client/styles/utilities/_typography.scss); colors via tokens in
   [styles/variables/_tokens.scss](src/client/styles/variables/_tokens.scss). Global sheet is `@layer base`;
   component SCSS is unlayered and wins.
+- **AI calls go through `runAi`** (logs `ai_runs`) and a task in `ai/tasks/`. Change a prompt by adding
+  `prompt.vN+1.md`, not editing the old one. Tests use a fake provider — never the real API.
 - **Dependencies must earn their place.** Ask before adding one.
 
 ## Map
@@ -34,6 +36,9 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | `inbox/` folder watcher | [src/server/services/inbox-watcher.ts](src/server/services/inbox-watcher.ts) |
 | Change events (SSE) | [src/server/lib/events.ts](src/server/lib/events.ts), [src/client/lib/events.ts](src/client/lib/events.ts) |
 | Client capture (upload queue, paste, drop) | [src/client/lib/capture.tsx](src/client/lib/capture.tsx), [GlobalCapture](src/client/components/GlobalCapture/GlobalCapture.tsx) |
+| AI tasks, prompts, context, provider | [src/server/ai/](src/server/ai) — `index.ts` lists the operations |
+| Ideas / posts storage | [src/server/services/ideas.ts](src/server/services/ideas.ts), [posts.ts](src/server/services/posts.ts) |
+| Draft editor | [src/client/features/draft/DraftView.tsx](src/client/features/draft/DraftView.tsx) |
 | Env config | [src/server/config.ts](src/server/config.ts), `.env` |
 | Library paths | [src/server/library.ts](src/server/library.ts) |
 | DB + migration runner | [src/server/db/index.ts](src/server/db/index.ts) |

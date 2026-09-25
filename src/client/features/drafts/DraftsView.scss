@@ -1,0 +1,32 @@
+.drafts-view__list {
+  max-width: 980px;
+  border-top: 1px solid var(--line);
+}
+
+.drafts-view__row {
+  gap: 20px;
+  padding: 16px 4px;
+  border-bottom: 1px solid var(--line);
+  transition: background-color var(--duration) var(--ease-out);
+
+  &:hover {
+    background: color-mix(in srgb, var(--surface-muted) 50%, transparent);
+  }
+}
+
+.drafts-view__platform {
+  width: 56px;
+  color: var(--muted);
+}
+
+.drafts-view__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drafts-view__muted,
+.drafts-view__meta {
+  color: var(--muted);
+}
