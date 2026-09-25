@@ -52,7 +52,10 @@ export interface DraftPackageInput {
 }
 
 // One idea → one draft per platform (X, LinkedIn, Instagram story, Instagram carousel).
-export async function draftPackage(deps: AiDeps, input: DraftPackageInput): Promise<string[]> {
+export async function draftPackage(
+  deps: AiDeps,
+  input: DraftPackageInput
+): Promise<{ postIds: string[]; skipped: Platform[] }> {
   const { db, provider, context, assets } = deps
   const platforms = [...new Set(input.platforms?.length ? input.platforms : DEFAULT_PLATFORMS)]
   const idea = db.prepare('SELECT * FROM ideas WHERE id = ?').get(input.ideaId) as
@@ -110,10 +113,14 @@ export async function draftPackage(deps: AiDeps, input: DraftPackageInput): Prom
 
   const allowed = new Set(sourceIds)
   const ids: string[] = []
+  const skipped: Platform[] = []
   db.transaction(() => {
     for (const platform of platforms) {
       const draft: DraftOutput | null = result.output[platform]
-      if (!draft || !draft.segments.length) continue
+      if (!draft || !draft.segments.length) {
+        skipped.push(platform)
+        continue
+      }
       const segments = cleanSegments(db, platform, draft.segments, allowed)
       const postId = randomUUID()
       db.prepare(
@@ -153,5 +160,5 @@ export async function draftPackage(deps: AiDeps, input: DraftPackageInput): Prom
     )
   })()
   deps.notify()
-  return ids
+  return { postIds: ids, skipped }
 }

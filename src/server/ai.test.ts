@@ -312,6 +312,86 @@ describe('ai', () => {
     expect(saved.format).toBe('carousel')
   })
 
+  it('merges a split LinkedIn post and reports platforms the AI skipped', async () => {
+    const idea = ideas.find((i) => i.angle === 'business')!
+    const original = outputs['write drafts for several platforms']!
+    outputs['write drafts for several platforms'] = () => ({
+      ...(original() as object),
+      linkedin: {
+        format: 'single',
+        segments: [
+          { text: 'First part.', assetId: null, kind: null },
+          { text: 'Second part.', assetId: null, kind: null },
+        ],
+        caption: null,
+        claims: [],
+        questions: [],
+      },
+      ig_story: null,
+    })
+    try {
+      const res = await app.request(
+        `/api/ideas/${idea.id}/draft`,
+        json({ platforms: ['linkedin', 'ig_story'] })
+      )
+      const body = (await res.json()) as { postIds: string[]; skipped: string[] }
+      expect(body.skipped).toEqual(['ig_story'])
+      const linkedin = await get<PostDetail>(`/api/posts/${body.postIds[0]}`)
+      expect(linkedin.current?.segments).toEqual([{ text: 'First part.\n\nSecond part.' }])
+    } finally {
+      outputs['write drafts for several platforms'] = original
+    }
+  })
+
+  it('restores an Instagram revision whose image was deleted since', async () => {
+    const png = join(library.root, 'frame.png')
+    execFileSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:s=320x240',
+      '-frames:v',
+      '1',
+      png,
+    ])
+    const upload = await app.request('/api/assets/upload', {
+      method: 'POST',
+      body: new Uint8Array(readFileSync(png)),
+      headers: { 'Content-Type': 'image/png', 'X-File-Name': 'frame.png' },
+    })
+    const image = ((await upload.json()) as CaptureResult).asset
+    await processor.idle()
+
+    const idea = ideas.find((i) => i.angle === 'technical')!
+    const { postIds } = (await (
+      await app.request(`/api/ideas/${idea.id}/draft`, json({ platforms: ['ig_story'] }))
+    ).json()) as { postIds: string[] }
+    const storyId = postIds[0]!
+    const save = (segments: unknown[]) =>
+      app.request(`/api/posts/${storyId}/revisions`, json({ segments }))
+
+    await save([{ text: 'With image', assetId: image.id, kind: 'image' }])
+    const withImage = await get<PostDetail>(`/api/posts/${storyId}`)
+    const revisionA = withImage.current!.id
+    await save([{ text: 'Text only', assetId: null, kind: 'text' }])
+    expect((await app.request(`/api/assets/${image.id}`, { method: 'DELETE' })).status).toBe(204)
+
+    const res = await app.request(`/api/posts/${storyId}/restore/${revisionA}`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    const restored = (await res.json()) as PostDetail
+    expect(restored.current?.id).toBe(revisionA)
+    expect(restored.current?.segments[0]).toEqual({
+      text: 'With image',
+      assetId: null,
+      kind: 'text',
+    })
+    expect(restored.mediaAssetIds).toEqual([])
+  })
+
   it('keeps manual edits and AI revisions as history', async () => {
     await app.request(
       `/api/posts/${draftId}/revisions`,

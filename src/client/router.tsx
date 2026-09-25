@@ -54,6 +54,10 @@ const draftRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/drafts/$id',
   component: DraftView,
+  // Platforms the AI didn't write when this draft package was created.
+  validateSearch: (search: Record<string, unknown>): { skipped?: string } => ({
+    skipped: typeof search.skipped === 'string' ? search.skipped : undefined,
+  }),
 })
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,

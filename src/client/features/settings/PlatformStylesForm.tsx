@@ -21,9 +21,11 @@ export function PlatformStylesForm() {
   const [values, setValues] = useState<PlatformStyles>({})
   const [saved, setSaved] = useState(false)
 
+  // Re-seed only when the styles themselves change — not when the voice form saves.
+  const stored = profile ? JSON.stringify(profile.platformStyles) : undefined
   useEffect(() => {
-    if (profile) setValues(profile.platformStyles)
-  }, [profile])
+    if (stored !== undefined) setValues(JSON.parse(stored))
+  }, [stored])
 
   useEffect(() => {
     if (!saved) return

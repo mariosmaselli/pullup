@@ -44,7 +44,6 @@ export function ideaRoutes(ideas: IdeaStore, ai: Ai) {
       const id = c.req.param('id')
       if (!ideas.exists(id)) return c.json({ error: 'Idea not found' }, 404)
       const input = draftBody.parse(await c.req.json())
-      const postIds = await ai.draftPackage({ ideaId: id, ...input })
-      return c.json({ postIds }, 201)
+      return c.json(await ai.draftPackage({ ideaId: id, ...input }), 201)
     })
 }

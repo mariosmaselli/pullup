@@ -156,7 +156,7 @@ export function useDraftIdea() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string; platforms?: Platform[]; instruction?: string }) =>
-      api<{ postIds: string[] }>(`/ideas/${id}/draft`, {
+      api<{ postIds: string[]; skipped: Platform[] }>(`/ideas/${id}/draft`, {
         method: 'POST',
         body: JSON.stringify(body),
       }),

@@ -34,9 +34,11 @@ interface RevisionRow {
   created_at: string
 }
 
-const toRevision = (r: RevisionRow): PostRevision => ({
+const toRevision = (r: RevisionRow, existing?: Set<string>): PostRevision => ({
   id: r.id,
-  segments: JSON.parse(r.segments),
+  segments: (JSON.parse(r.segments) as Segment[]).map((s) =>
+    s.assetId && existing && !existing.has(s.assetId) ? { ...s, assetId: null, kind: 'text' } : s
+  ),
   caption: r.caption,
   author: r.author,
   instruction: r.instruction,
@@ -66,6 +68,17 @@ export function cleanSegments(
   segments: Segment[],
   allowed?: Set<string>
 ): Segment[] {
+  // LinkedIn is always a single post: merge anything the model split up.
+  if (platform === 'linkedin') {
+    return [
+      {
+        text: segments
+          .map((s) => s.text.trim())
+          .filter(Boolean)
+          .join('\n\n'),
+      },
+    ]
+  }
   if (!hasFrameMedia(platform)) return segments.map((s) => ({ text: s.text }))
   const ids = segments.map((s) => s.assetId).filter((id): id is string => !!id)
   const kinds = new Map(
@@ -124,25 +137,42 @@ export function writeRevision(db: DB, rev: NewRevision): string {
   return id
 }
 
+// Media rows only for assets that still exist: an old revision may point at a deleted asset.
 function syncFrameMedia(db: DB, postId: string, segments: Segment[]) {
   db.prepare('DELETE FROM post_media WHERE post_id = ?').run(postId)
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO post_media (post_id, asset_id, segment_index, position) VALUES (?, ?, ?, 0)'
+    `INSERT OR IGNORE INTO post_media (post_id, asset_id, segment_index, position)
+     SELECT ?, id, ?, 0 FROM assets WHERE id = ?`
   )
-  segments.forEach((s, i) => s.assetId && insert.run(postId, s.assetId, i))
+  segments.forEach((s, i) => s.assetId && insert.run(postId, i, s.assetId))
 }
 
 export function setAttachedMedia(db: DB, postId: string, assetIds: string[]) {
   db.prepare('DELETE FROM post_media WHERE post_id = ?').run(postId)
   const insert = db.prepare(
-    'INSERT INTO post_media (post_id, asset_id, segment_index, position) VALUES (?, ?, 0, ?)'
+    `INSERT INTO post_media (post_id, asset_id, segment_index, position)
+     SELECT ?, id, 0, ? FROM assets WHERE id = ?`
   )
-  assetIds.forEach((assetId, position) => insert.run(postId, assetId, position))
+  assetIds.forEach((assetId, position) => insert.run(postId, position, assetId))
 }
 
 // ── Store ───────────────────────────────────────────────────────────────────────────────────
 
 export function createPostStore(db: DB) {
+  // Asset ids (from frames) that still exist, so revisions never point at deleted assets.
+  const existingAssets = (revisions: RevisionRow[]) => {
+    const ids = revisions.flatMap((r) =>
+      (JSON.parse(r.segments) as Segment[]).map((s) => s.assetId).filter(Boolean)
+    )
+    return new Set(
+      (
+        db
+          .prepare('SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))')
+          .all(JSON.stringify(ids)) as { id: string }[]
+      ).map((r) => r.id)
+    )
+  }
+
   const hydrate = (rows: PostRow[]): Post[] => {
     const ids = JSON.stringify(rows.map((r) => r.id))
     const revisions = db
@@ -158,6 +188,7 @@ export function createPostStore(db: DB) {
       )
       .all(ids) as { post_id: string; asset_id: string }[]
 
+    const existing = existingAssets(revisions)
     return rows.map((r) => {
       const current = revisions.find((rev) => rev.post_id === r.id)
       return {
@@ -172,7 +203,7 @@ export function createPostStore(db: DB) {
         scheduledFor: r.scheduled_for,
         publishedAt: r.published_at,
         publicUrl: r.public_url,
-        current: current ? toRevision(current) : null,
+        current: current ? toRevision(current, existing) : null,
         mediaAssetIds: [...new Set(media.filter((m) => m.post_id === r.id).map((m) => m.asset_id))],
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -198,11 +229,11 @@ export function createPostStore(db: DB) {
       const r = row(id)
       if (!r) return undefined
       const [post] = hydrate([r])
-      const revisions = (
-        db
-          .prepare('SELECT * FROM post_revisions WHERE post_id = ? ORDER BY created_at DESC')
-          .all(id) as RevisionRow[]
-      ).map(toRevision)
+      const revisionRows = db
+        .prepare('SELECT * FROM post_revisions WHERE post_id = ? ORDER BY created_at DESC')
+        .all(id) as RevisionRow[]
+      const existing = existingAssets(revisionRows)
+      const revisions = revisionRows.map((rev) => toRevision(rev, existing))
       const sourceAssetIds = r.idea_id
         ? (
             db.prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ?').all(r.idea_id) as {

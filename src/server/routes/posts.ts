@@ -21,7 +21,12 @@ const revisionBody = z.object({
     )
     .min(1)
     .max(25),
-  caption: z.string().max(2200).nullable().optional(),
+  // Counted in characters (code points), like the editor's counter.
+  caption: z
+    .string()
+    .refine((v) => [...v].length <= 2200, 'Caption is over 2,200 characters')
+    .nullable()
+    .optional(),
 })
 
 const patchBody = z.object({

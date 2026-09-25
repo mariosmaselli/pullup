@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { Platform } from '@shared/constants.ts'
 import type { Asset, Segment } from '@shared/types.ts'
 import { Button } from '../../components/Button/Button.tsx'
@@ -33,6 +34,17 @@ export function FramesEditor(props: Props) {
   const frames = config.frames as Exclude<typeof config.frames, false>
   const visual = sources.filter((a) => a.kind === 'image' || a.kind === 'video')
 
+  // Stable identity per frame, so reordering moves the DOM (and focus) with the frame.
+  const nextKey = useRef(0)
+  const keys = useRef<number[]>([])
+  if (keys.current.length !== segments.length) {
+    keys.current = segments.map(() => nextKey.current++)
+  }
+  const change = (next: Segment[], nextKeys: number[]) => {
+    keys.current = nextKeys
+    onChange(next)
+  }
+
   const update = (i: number, patch: Partial<Segment>) =>
     onChange(segments.map((s, j) => (j === i ? { ...s, ...patch } : s)))
 
@@ -42,7 +54,7 @@ export function FramesEditor(props: Props) {
         const asset = segment.assetId ? byId.get(segment.assetId) : undefined
         const length = config.length(segment.text)
         return (
-          <div key={i} className="frames-editor__frame flex">
+          <div key={keys.current[i]} className="frames-editor__frame flex">
             <div className="frames-editor__preview shrink-0">
               <FramePreview segment={segment} asset={asset} aspect={frames.aspect} />
             </div>
@@ -57,7 +69,7 @@ export function FramesEditor(props: Props) {
                     size="s"
                     disabled={i === 0}
                     aria-label="Move up"
-                    onClick={() => onChange(move(segments, i, i - 1))}
+                    onClick={() => change(move(segments, i, i - 1), move(keys.current, i, i - 1))}
                   >
                     ↑
                   </Button>
@@ -66,7 +78,7 @@ export function FramesEditor(props: Props) {
                     size="s"
                     disabled={i === segments.length - 1}
                     aria-label="Move down"
-                    onClick={() => onChange(move(segments, i, i + 1))}
+                    onClick={() => change(move(segments, i, i + 1), move(keys.current, i, i + 1))}
                   >
                     ↓
                   </Button>
@@ -74,7 +86,12 @@ export function FramesEditor(props: Props) {
                     <Button
                       variant="ghost"
                       size="s"
-                      onClick={() => onChange(segments.filter((_, j) => j !== i))}
+                      onClick={() =>
+                        change(
+                          segments.filter((_, j) => j !== i),
+                          keys.current.filter((_, j) => j !== i)
+                        )
+                      }
                     >
                       Remove
                     </Button>
@@ -125,7 +142,12 @@ export function FramesEditor(props: Props) {
           variant="ghost"
           size="s"
           className="frames-editor__add"
-          onClick={() => onChange([...segments, { text: '', assetId: null, kind: 'text' }])}
+          onClick={() =>
+            change(
+              [...segments, { text: '', assetId: null, kind: 'text' }],
+              [...keys.current, nextKey.current++]
+            )
+          }
         >
           + Add {frames.noun}
         </Button>

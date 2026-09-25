@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import type { PostStatus } from '@shared/constants.ts'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import type { Platform, PostStatus } from '@shared/constants.ts'
 import type { Asset, Claim, PostDetail, Segment } from '@shared/types.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
@@ -33,6 +33,7 @@ const sameContent = (a: Segment[], b: Segment[]) =>
 
 export function DraftView() {
   const { id } = useParams({ from: '/drafts/$id' })
+  const { skipped } = useSearch({ from: '/drafts/$id' })
   const { data: post, isLoading } = usePost(id)
   const { data: assets } = useAssets('all')
 
@@ -45,10 +46,25 @@ export function DraftView() {
     )
   }
   // Remount the editor per revision so local edits reset when the draft changes underneath.
-  return <DraftEditor key={post.current?.id ?? post.id} post={post} assets={assets ?? []} />
+  return (
+    <DraftEditor
+      key={post.current?.id ?? post.id}
+      post={post}
+      assets={assets ?? []}
+      skipped={(skipped?.split(',') ?? []).filter((p): p is Platform => p in PLATFORMS)}
+    />
+  )
 }
 
-function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
+function DraftEditor({
+  post,
+  assets,
+  skipped,
+}: {
+  post: PostDetail
+  assets: Asset[]
+  skipped: Platform[]
+}) {
   const navigate = useNavigate()
   const save = useSavePostRevision()
   const revise = useRevisePost()
@@ -74,7 +90,7 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
   const dirty = !sameContent(segments, initial) || caption !== initialCaption
   const overLimit = config.hardLimit && segments.some((s) => config.length(s.text) > config.limit)
   const busy = revise.isPending || save.isPending
-  const error = (revise.error ?? save.error ?? update.error) as ApiError | null
+  const error = (revise.error ?? save.error ?? update.error ?? restore.error) as ApiError | null
   const claims = post.current?.claims ?? []
   const unconfirmed = claims.filter((c) => c.basis === 'unconfirmed')
   // Platforms with more than one draft get their angle in the tab label.
@@ -151,6 +167,14 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
                 </Link>
               ))}
             </div>
+          ) : null}
+
+          {skipped.length ? (
+            <p className="draft-view__warning -p1">
+              The AI didn’t write a draft for {skipped.map((p) => PLATFORMS[p].label).join(', ')}.
+              Try again from the idea with just{' '}
+              {skipped.length === 1 ? 'that platform' : 'those platforms'}.
+            </p>
           ) : null}
 
           <header className="draft-view__header flex items-center justify-between">

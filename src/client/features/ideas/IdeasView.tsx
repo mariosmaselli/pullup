@@ -57,8 +57,13 @@ export function IdeasView() {
                 draft.mutate(
                   { id: idea.id, platforms },
                   {
-                    onSuccess: ({ postIds }) =>
-                      postIds[0] && navigate({ to: '/drafts/$id', params: { id: postIds[0] } }),
+                    onSuccess: ({ postIds, skipped }) =>
+                      postIds[0] &&
+                      navigate({
+                        to: '/drafts/$id',
+                        params: { id: postIds[0] },
+                        search: { skipped: skipped.length ? skipped.join(',') : undefined },
+                      }),
                   }
                 )
               }

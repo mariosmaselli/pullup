@@ -11,9 +11,11 @@ export function VoiceForm() {
   const [value, setValue] = useState('')
   const [saved, setSaved] = useState(false)
 
+  // Re-seed only when the voice itself changes — not when another Settings form saves.
+  const stored = profile?.voiceGuide
   useEffect(() => {
-    if (profile) setValue(profile.voiceGuide)
-  }, [profile])
+    if (stored !== undefined) setValue(stored)
+  }, [stored])
 
   useEffect(() => {
     if (!saved) return

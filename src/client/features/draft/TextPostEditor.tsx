@@ -69,7 +69,7 @@ export function TextPostEditor({ platform, segments, media, copied, onChange, on
             {platform === 'linkedin' && length > LINKEDIN_FOLD ? (
               <p className="text-post__fold -p1">
                 <span className="-meta">Before “see more”:</span>{' '}
-                {segment.text.slice(0, LINKEDIN_FOLD)}…
+                {[...segment.text].slice(0, LINKEDIN_FOLD).join('')}…
               </p>
             ) : null}
           </div>
