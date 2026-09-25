@@ -8,7 +8,9 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 - **Local-first.** No hosted database, auth, cloud storage or deploys unless Mario asks.
 - **Code and content are separate.** Media and `pullup.db` live in the library folder
   (`PULLUP_LIBRARY`, default `~/Pullup`), never in this repo. Store paths relative to the library root.
-- **Originals are never modified.** Derivatives go in `cache/` and must be rebuildable.
+- **Originals are never modified or hard-deleted.** Deleting moves them to `<library>/trash/`.
+  Derivatives go in `cache/<asset id>/` and must be rebuildable.
+- **Every asset write goes through the asset store** so change events reach the UI.
 - **AI assists, never invents.** AI output is stored separately from user metadata, cites its source
   assets, marks claims as `source` / `framing` / `unconfirmed`, and every call is logged in `ai_runs`.
 - **Privacy is enforced in code.** Assets are `private` until approved; a post can't be approved with
@@ -24,7 +26,14 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 
 | Concern | Where |
 |---|---|
-| Server entry, route mounting | [src/server/index.ts](src/server/index.ts) |
+| Server entry (listen, watcher, prod static) | [src/server/index.ts](src/server/index.ts) |
+| App factory, routes, file serving, error mapping | [src/server/app.ts](src/server/app.ts) |
+| Asset rows ↔ API shape | [src/server/services/assets.ts](src/server/services/assets.ts) |
+| Import / link / note / delete | [src/server/services/capture.ts](src/server/services/capture.ts) |
+| Thumbnails, frames, link previews | [src/server/services/processing.ts](src/server/services/processing.ts) |
+| `inbox/` folder watcher | [src/server/services/inbox-watcher.ts](src/server/services/inbox-watcher.ts) |
+| Change events (SSE) | [src/server/lib/events.ts](src/server/lib/events.ts), [src/client/lib/events.ts](src/client/lib/events.ts) |
+| Client capture (upload queue, paste, drop) | [src/client/lib/capture.tsx](src/client/lib/capture.tsx), [GlobalCapture](src/client/components/GlobalCapture/GlobalCapture.tsx) |
 | Env config | [src/server/config.ts](src/server/config.ts), `.env` |
 | Library paths | [src/server/library.ts](src/server/library.ts) |
 | DB + migration runner | [src/server/db/index.ts](src/server/db/index.ts) |
@@ -52,5 +61,6 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | `pnpm build` | Typecheck + build SPA to `dist/` |
 | `pnpm start` | Production: one server on 4500 serving app + API |
 | `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm test` | Vitest — server tests run against a throwaway library in the OS temp dir |
 
 Preview in Claude: `preview_start` with name `pullup` (defined in `tools/.claude/launch.json`).

@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { SystemInfo } from '@shared/types.ts'
 import { useSystem } from '../../lib/queries.ts'
 import { ProfileSwitcher } from '../ProfileSwitcher/ProfileSwitcher.tsx'
+import { useCapture } from '../../lib/capture.tsx'
 import './Sidebar.scss'
 
 type CountKey = keyof SystemInfo['counts']
@@ -17,12 +18,22 @@ const NAV: { to: string; label: string; count?: CountKey }[] = [
 
 export function Sidebar() {
   const { data: system } = useSystem()
+  const { setQuickCaptureOpen } = useCapture()
 
   return (
     <aside className="sidebar flex flex-col shrink-0">
       <div className="sidebar__brand -t2">Pullup</div>
 
       <ProfileSwitcher />
+
+      <button
+        type="button"
+        className="sidebar__capture flex items-center justify-between -p"
+        onClick={() => setQuickCaptureOpen(true)}
+      >
+        <span>Capture</span>
+        <span className="-meta">⌘K</span>
+      </button>
 
       <nav className="sidebar__nav flex flex-col">
         {NAV.map((item) => {

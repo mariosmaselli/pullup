@@ -1,0 +1,8 @@
+// Leaves room for the fixed detail panel so the grid reflows instead of hiding behind it.
+.asset-browser {
+  transition: padding-right 260ms var(--ease-out);
+
+  &[data-panel='true'] {
+    padding-right: calc(var(--panel-width) - 24px);
+  }
+}

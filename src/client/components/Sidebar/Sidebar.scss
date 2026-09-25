@@ -11,6 +11,23 @@
   letter-spacing: -0.01em;
 }
 
+.sidebar__capture {
+  margin-top: -12px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:hover {
+    border-color: var(--muted);
+  }
+
+  .-meta {
+    color: var(--muted);
+  }
+}
+
 .sidebar__nav {
   gap: 2px;
 }

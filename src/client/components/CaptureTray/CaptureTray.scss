@@ -1,0 +1,67 @@
+.capture-tray {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  width: 300px;
+  gap: 8px;
+}
+
+.capture-tray__item {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.25);
+  animation: capture-tray-in 240ms var(--ease-out);
+}
+
+@keyframes capture-tray-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.capture-tray__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capture-tray__status,
+.capture-tray__dismiss {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: var(--muted);
+}
+
+.capture-tray__dismiss:hover {
+  color: var(--ink);
+}
+
+.capture-tray__bar {
+  height: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-muted);
+}
+
+.capture-tray__progress {
+  height: 100%;
+  background: var(--ink);
+  transform-origin: left;
+  transition: transform 200ms linear;
+
+  [data-status='done'] &,
+  [data-status='duplicate'] & {
+    background: var(--muted);
+  }
+}
+
+.capture-tray__error {
+  margin-top: 4px;
+  color: var(--signal);
+}

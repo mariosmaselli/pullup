@@ -1,0 +1,51 @@
+.quick-capture {
+  width: min(560px, calc(100vw - 32px));
+  margin: 18vh auto auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow:
+    0 24px 60px -20px rgb(0 0 0 / 0.35),
+    0 2px 6px rgb(0 0 0 / 0.06);
+
+  &::backdrop {
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    backdrop-filter: blur(3px);
+  }
+
+  &[open] {
+    animation: quick-capture-in 220ms var(--ease-out);
+  }
+}
+
+@keyframes quick-capture-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.quick-capture__input {
+  width: 100%;
+  padding: 20px 22px 8px;
+  resize: none;
+  outline: none;
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.quick-capture__footer {
+  gap: 12px;
+  padding: 10px 12px 12px 22px;
+
+  .button + .button {
+    margin-left: 6px;
+  }
+}
+
+.quick-capture__hint {
+  color: var(--muted);
+}

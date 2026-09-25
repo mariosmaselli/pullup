@@ -26,10 +26,29 @@ Configured by `PULLUP_LIBRARY` (default `~/Pullup`). Kept outside the code repo.
 ```
 ~/Pullup/
   inbox/      drop zone on disk — Shortcuts, screenshots, anything; imported by the watcher
-  media/      originals after capture, owned by Pullup
-  cache/      thumbnails, posters, frames — safe to delete
+  media/      originals after capture, by month: media/2026/09/<name>-<id>.<ext>
+  cache/      per-asset thumbnails, posters, frames — safe to delete, rebuilt by Reprocess
+  trash/      originals of deleted assets and inbox-folder duplicates; emptied by you, never by Pullup
+  .tmp/       in-flight uploads, cleared on start
   pullup.db   all metadata
 ```
+
+## Capture pipeline (M1)
+
+- **Entry points:** drop anywhere (files or dragged links), ⌘V paste anywhere (images, URLs, text),
+  ⌘K quick capture (note or link), and the `inbox/` folder watcher.
+- **Uploads** stream raw to `POST /api/assets/upload` (no multipart, no memory buffering), hashed on
+  the way in. SHA-256 dedupes: a duplicate returns the existing asset.
+- **Inbox folder:** a file is imported once its size stops changing; dotfiles and partial downloads
+  are ignored; unsupported types are left in place. Capture date = earlier of mtime and birthtime.
+- **Processing queue** (in-process, 2 at a time, resumed on restart) writes to `cache/<asset id>/`:
+  images → `thumb.jpg` (720 w); videos → 6 evenly spaced `frame-N.jpg` (1280 w, for AI), `poster.jpg`,
+  `thumb.jpg`; links → Open Graph metadata + preview image. HEIC/HEIF go through macOS `sips`
+  (ffmpeg only decodes one 512 px tile) and get a `poster.jpg` because browsers can't show HEIC.
+- **Files** are served from `/api/files/{media,cache}/…` only, with byte ranges so video can seek.
+- **Live updates:** the server pushes change events over SSE (`/api/events`, 10 s heartbeat); the
+  client refreshes queries, reconnects with backoff, and refetches on reconnect.
+- **Delete** moves the original to `trash/` and drops the cache; refused if the asset is used in a post.
 
 Moving the folder (e.g. into iCloud Drive for phone capture) = move it and change one env var. All
 stored paths are relative to the library root.
@@ -87,7 +106,7 @@ preview, claims and questions, revisions.
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | Scaffold, SQLite schema + migrations, library folder, app shell | ✅ App runs, all views reachable, Settings reads the library |
-| M1 | Capture: drop, paste, notes, links (OG fetch), inbox-folder watcher, ffmpeg posters/frames, Inbox grid | A dropped 1 GB `.mov` shows a poster; a pasted URL shows its preview |
+| M1 | Capture: drop, paste, notes, links (OG fetch), inbox-folder watcher, ffmpeg posters/frames, Inbox grid | ✅ Recordings get posters + frames; pasted URLs get previews; inbox folder imports live |
 | M2 | Organize: projects CRUD, assign, tags, visibility, asset side panel | A recording lives in a project, marked private |
 | M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | Accurate description + tags; cost logged |
 | M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | **First end-to-end workflow** |
