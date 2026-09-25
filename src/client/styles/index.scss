@@ -1,0 +1,8 @@
+// Global sheet — sits in @layer base so component SCSS (unlayered) and Tailwind utilities win.
+@use 'sass:meta';
+@use 'variables/tokens';
+
+@layer base {
+  @include meta.load-css('base/reset');
+  @include meta.load-css('utilities/typography');
+}

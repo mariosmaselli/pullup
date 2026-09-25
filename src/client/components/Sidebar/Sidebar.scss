@@ -1,0 +1,42 @@
+.sidebar {
+  width: var(--sidebar-width);
+  height: 100%;
+  padding: 28px 16px 20px;
+  gap: 28px;
+  border-right: 1px solid var(--line);
+}
+
+.sidebar__brand {
+  padding: 0 10px;
+  letter-spacing: -0.01em;
+}
+
+.sidebar__nav {
+  gap: 2px;
+}
+
+.sidebar__link {
+  padding: 7px 10px;
+  border-radius: var(--radius-m);
+  color: var(--muted);
+  transition:
+    color var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+
+  &:hover {
+    color: var(--ink);
+  }
+
+  &.is-active {
+    color: var(--ink);
+    background: var(--surface-muted);
+  }
+}
+
+.sidebar__count {
+  color: var(--signal);
+}
+
+.sidebar__footer {
+  margin-top: auto;
+}

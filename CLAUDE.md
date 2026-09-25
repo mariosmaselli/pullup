@@ -1,0 +1,56 @@
+# Pullup — agent guide
+
+Personal content OS for Mario (Nonlinear Studio). **Local-only**: React SPA + Hono server + SQLite,
+running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Doctrine — do not violate
+
+- **Local-first.** No hosted database, auth, cloud storage or deploys unless Mario asks.
+- **Code and content are separate.** Media and `pullup.db` live in the library folder
+  (`PULLUP_LIBRARY`, default `~/Pullup`), never in this repo. Store paths relative to the library root.
+- **Originals are never modified.** Derivatives go in `cache/` and must be rebuildable.
+- **AI assists, never invents.** AI output is stored separately from user metadata, cites its source
+  assets, marks claims as `source` / `framing` / `unconfirmed`, and every call is logged in `ai_runs`.
+- **Privacy is enforced in code.** Assets are `private` until approved; a post can't be approved with
+  private media; projects with `ai_allowed = 0` never reach the AI provider.
+- **Styling:** Tailwind = structural layout only (flex, sizing, breakpoints). Everything visual lives in
+  a co-located `.scss` whose root class is the kebab-cased component name. Type via `-t1 -t2 -p -p1 -meta`
+  in [styles/utilities/_typography.scss](src/client/styles/utilities/_typography.scss); colors via tokens in
+  [styles/variables/_tokens.scss](src/client/styles/variables/_tokens.scss). Global sheet is `@layer base`;
+  component SCSS is unlayered and wins.
+- **Dependencies must earn their place.** Ask before adding one.
+
+## Map
+
+| Concern | Where |
+|---|---|
+| Server entry, route mounting | [src/server/index.ts](src/server/index.ts) |
+| Env config | [src/server/config.ts](src/server/config.ts), `.env` |
+| Library paths | [src/server/library.ts](src/server/library.ts) |
+| DB + migration runner | [src/server/db/index.ts](src/server/db/index.ts) |
+| Schema (add `NNN_name.sql`, never edit applied ones) | [src/server/db/migrations/](src/server/db/migrations) |
+| Enums shared by DB/API/UI | [src/shared/constants.ts](src/shared/constants.ts) |
+| API types | [src/shared/types.ts](src/shared/types.ts) |
+| Routes | [src/client/router.tsx](src/client/router.tsx) |
+| Data hooks | [src/client/lib/queries.ts](src/client/lib/queries.ts) |
+| Views | `src/client/features/<view>/` |
+| Shared UI | `src/client/components/<Name>/<Name>.tsx + .scss` |
+
+## Conventions
+
+- TypeScript strict. Relative imports inside client/server; `@shared/*` for shared code. Import `.ts`
+  files with their extension.
+- DB rows are snake_case; API JSON is camelCase — map in the route (see `routes/profiles.ts`).
+- API errors are `{ error: string }` with a proper status.
+- Prettier: no semicolons, single quotes, 100 cols (`pnpm format`).
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `pnpm dev` | Vite on 4500 + API on 4501 (proxied) |
+| `pnpm build` | Typecheck + build SPA to `dist/` |
+| `pnpm start` | Production: one server on 4500 serving app + API |
+| `pnpm typecheck` | `tsc --noEmit` |
+
+Preview in Claude: `preview_start` with name `pullup` (defined in `tools/.claude/launch.json`).

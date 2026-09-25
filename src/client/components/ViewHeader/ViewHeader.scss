@@ -1,0 +1,12 @@
+.view-header {
+  gap: 24px;
+  padding-bottom: 24px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.view-header__description {
+  margin-top: 6px;
+  max-width: 56ch;
+  color: var(--muted);
+}

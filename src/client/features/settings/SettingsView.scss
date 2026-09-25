@@ -1,0 +1,51 @@
+.settings-view__section {
+  max-width: 760px;
+
+  & + & {
+    margin-top: 48px;
+  }
+}
+
+.settings-view__heading {
+  margin-bottom: 14px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.settings-view__list {
+  border-top: 1px solid var(--line);
+}
+
+.settings-view__row {
+  gap: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-view__label {
+  width: 140px;
+  color: var(--muted);
+}
+
+.settings-view__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+}
+
+.settings-view__profiles {
+  gap: 12px;
+}
+
+.settings-view__profile {
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.settings-view__voice {
+  margin-top: 8px;
+  max-width: 64ch;
+  color: var(--muted);
+}

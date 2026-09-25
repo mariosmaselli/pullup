@@ -1,0 +1,40 @@
+// Design tokens as CSS custom properties. Light is the default, dark follows the system.
+
+:root {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface-muted: #eceae4;
+  --ink: #171716;
+  --ink-soft: #3d3c39;
+  --muted: #76746e;
+  --line: #e2dfd8;
+  --signal: #e2462b;
+  --focus: #2b59e2;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --font-serif: ui-serif, 'New York', 'Iowan Old Style', Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 14px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration: 180ms;
+
+  --sidebar-width: 232px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121211;
+    --surface: #1b1b1a;
+    --surface-muted: #242422;
+    --ink: #edebe6;
+    --ink-soft: #c9c6bf;
+    --muted: #8c8a84;
+    --line: #2c2b29;
+    --signal: #ff6a4d;
+    --focus: #7d9bff;
+  }
+}
