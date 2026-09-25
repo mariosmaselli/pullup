@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>worker bench</title></head><body><pre id="log"></pre>
+<script type="module">
+const w = new Worker('/worker.js' + location.search, { type: 'module' })
+const logEl = document.getElementById('log')
+w.onmessage = (e) => { if (e.data.log) logEl.textContent += e.data.log + '\n'; if (e.data.result) window.__result = e.data.result }
+w.onerror = (e) => { window.__result = { error: 'worker error ' + e.message } }
+</script></body></html>

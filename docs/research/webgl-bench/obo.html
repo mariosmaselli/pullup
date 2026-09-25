@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><title>obo</title></head><body>
+<script type="module">
+const q = new URLSearchParams(location.search)
+const gpu = q.get('backend') === 'webgpu'
+const THREE = await import(gpu ? '/node_modules/three/build/three.webgpu.js' : '/node_modules/three/build/three.module.js')
+const { Output, Mp4OutputFormat, BufferTarget, CanvasSource } = await import('/node_modules/mediabunny/dist/bundles/mediabunny.mjs')
+try {
+  const W = 1080, H = 1920, FPS = 30, N = 32
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
+  const renderer = gpu ? new THREE.WebGPURenderer({ canvas }) : new THREE.WebGLRenderer({ canvas })
+  renderer.setPixelRatio(1); renderer.setSize(W, H, false)
+  if (gpu) await renderer.init()
+  const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera()
+  const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
+  const source = new CanvasSource(canvas, { codec: 'avc', bitrate: 16e6 })
+  output.addVideoTrack(source, { frameRate: FPS }); await output.start()
+  for (let i = 0; i < N; i++) {
+    const v = (i * 8) / 255
+    scene.background = new THREE.Color().setRGB(v, v, v, THREE.SRGBColorSpace)
+    renderer.render(scene, camera)
+    await source.add(i / FPS, 1 / FPS)
+  }
+  await output.finalize()
+  await fetch('/save?name=obo_' + (gpu ? 'webgpu' : 'webgl') + '.mp4', { method: 'POST', body: output.target.buffer })
+  window.__result = { ok: true }
+} catch (e) { window.__result = { error: String(e.stack || e) } }
+</script></body></html>
