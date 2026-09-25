@@ -1,0 +1,378 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams } from '@tanstack/react-router'
+import type { Aspect, MediaInput, Render, TemplateInputs, TemplateMeta } from '@shared/template.ts'
+import { Button } from '../../components/Button/Button.tsx'
+import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
+import { MediaPicker } from '../../components/MediaPicker/MediaPicker.tsx'
+import { ParamField } from '../../components/ParamField/ParamField.tsx'
+import { Segmented } from '../../components/Segmented/Segmented.tsx'
+import { bytes, relativeTime } from '../../lib/format.ts'
+import { useAssets, useDeleteRender, useRenders } from '../../lib/queries.ts'
+import { PreviewController, renderTemplate, resolveMedia } from '../../render/client.ts'
+import { templateMeta } from '../../render/templates.ts'
+import './TemplateStudio.scss'
+
+const PREVIEW_WIDTH = 540
+
+interface StudioState {
+  aspect: Aspect
+  duration: number
+  text: Record<string, string>
+  params: Record<string, unknown>
+  seed: number
+}
+
+const initialState = (meta: TemplateMeta): StudioState => ({
+  aspect: meta.aspects[0]!,
+  duration: meta.duration?.default ?? 0,
+  text: Object.fromEntries(Object.entries(meta.text ?? {}).map(([k, s]) => [k, s.default ?? ''])),
+  params: Object.fromEntries(Object.entries(meta.params ?? {}).map(([k, s]) => [k, s.default])),
+  seed: 1,
+})
+
+export function TemplateStudio() {
+  const { id } = useParams({ from: '/templates/$id' })
+  const meta = templateMeta(id)
+  if (!meta) {
+    return (
+      <EmptyState title="Template not found">
+        <Link to="/templates">Back to templates</Link>
+      </EmptyState>
+    )
+  }
+  return <Studio key={meta.id} meta={meta} />
+}
+
+function Studio({ meta }: { meta: TemplateMeta }) {
+  const { data: allAssets = [] } = useAssets('all')
+  const { data: renders = [] } = useRenders()
+  const remove = useDeleteRender()
+  const [state, setState] = useState<StudioState>(() => initialState(meta))
+  const [mediaIds, setMediaIds] = useState<string[]>([])
+  const [media, setMedia] = useState<MediaInput[]>([])
+  const [preparing, setPreparing] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [time, setTime] = useState({ t: 0, playing: false, duration: 0 })
+  const [progress, setProgress] = useState<number | null>(null)
+  const [renderError, setRenderError] = useState<string | null>(null)
+  const [latest, setLatest] = useState<Render | null>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const preview = useRef<PreviewController | null>(null)
+  const abort = useRef<AbortController | null>(null)
+
+  const pickable = useMemo(
+    () =>
+      allAssets.filter(
+        (a) =>
+          (a.kind === 'image' || a.kind === 'video') &&
+          a.processingStatus === 'ready' &&
+          meta.media.kinds.includes(a.kind)
+      ),
+    [allAssets, meta.media.kinds]
+  )
+  const needsMedia = mediaIds.length < meta.media.min
+
+  // Resolve what the worker reads for the picked assets (videos get a proxy on first use).
+  useEffect(() => {
+    let cancelled = false
+    if (!mediaIds.length) {
+      setMedia([])
+      return
+    }
+    setPreparing(true)
+    resolveMedia(mediaIds)
+      .then((resolved) => !cancelled && setMedia(resolved))
+      .catch((err: Error) => !cancelled && setPreviewError(err.message))
+      .finally(() => !cancelled && setPreparing(false))
+    return () => {
+      cancelled = true
+    }
+  }, [mediaIds])
+
+  const inputs: TemplateInputs = useMemo(
+    () => ({
+      aspect: state.aspect,
+      duration: state.duration,
+      media,
+      text: state.text,
+      params: state.params,
+      seed: state.seed,
+    }),
+    [state, media]
+  )
+
+  // One worker per canvas. A canvas can be handed to a worker only once, so each run of this
+  // effect (React may run it twice in development) creates its own <canvas>.
+  const [previewEpoch, setPreviewEpoch] = useState(0)
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const canvas = document.createElement('canvas')
+    canvas.className = 'template-studio__canvas'
+    stage.prepend(canvas)
+    const controller = new PreviewController(canvas, {
+      onLoaded: (info) => {
+        setPreviewError(null)
+        setTime((current) => ({ ...current, duration: info.duration }))
+      },
+      onTime: (t, playing) => setTime((current) => ({ ...current, t, playing })),
+      onError: setPreviewError,
+    })
+    preview.current = controller
+    setPreviewEpoch((n) => n + 1)
+    return () => {
+      controller.dispose()
+      canvas.remove()
+      preview.current = null
+    }
+  }, [])
+
+  // Reload the preview when inputs change (debounced while typing).
+  useEffect(() => {
+    if (needsMedia || preparing || media.length !== mediaIds.length) return
+    const handle = setTimeout(() => preview.current?.load(meta, inputs, PREVIEW_WIDTH), 120)
+    return () => clearTimeout(handle)
+  }, [meta, inputs, needsMedia, preparing, media.length, mediaIds.length, previewEpoch])
+
+  const templateRenders = renders.filter((r) => r.templateId === meta.id)
+  const shown = latest ?? templateRenders[0] ?? null
+
+  const startRender = async () => {
+    setRenderError(null)
+    setProgress(0)
+    abort.current = new AbortController()
+    try {
+      const render = await renderTemplate({
+        meta,
+        inputs,
+        signal: abort.current.signal,
+        onProgress: (done, total) => setProgress(done / total),
+      })
+      setLatest(render)
+    } catch (err) {
+      setRenderError((err as Error).message)
+    } finally {
+      setProgress(null)
+    }
+  }
+
+  const setText = (key: string, value: string) =>
+    setState((s) => ({ ...s, text: { ...s.text, [key]: value } }))
+  const setParam = (key: string, value: unknown) =>
+    setState((s) => ({ ...s, params: { ...s.params, [key]: value } }))
+
+  return (
+    <div className="template-studio">
+      <Link to="/templates" className="template-studio__back -meta">
+        ← Templates
+      </Link>
+
+      <div className="template-studio__layout flex">
+        {/* Inputs */}
+        <aside className="template-studio__inputs flex flex-col shrink-0">
+          <header className="flex flex-col">
+            <h1 className="-t2">{meta.name}</h1>
+            <p className="template-studio__muted -p1">{meta.description}</p>
+          </header>
+
+          {meta.aspects.length > 1 ? (
+            <div className="template-studio__field flex flex-col">
+              <span className="template-studio__label -meta">Format</span>
+              <Segmented<Aspect>
+                label="Format"
+                value={state.aspect}
+                options={meta.aspects.map((a) => ({
+                  value: a,
+                  label: a === '9:16' ? 'Story 9:16' : a === '4:5' ? 'Feed 4:5' : 'Square',
+                }))}
+                onChange={(aspect) => setState((s) => ({ ...s, aspect }))}
+              />
+            </div>
+          ) : null}
+
+          {meta.media.max > 0 ? (
+            <div className="template-studio__field flex flex-col">
+              <span className="template-studio__label -meta">
+                {meta.media.label ?? 'Media'} · {mediaIds.length}/{meta.media.max}
+                {meta.media.min ? ` (at least ${meta.media.min})` : ''}
+              </span>
+              <MediaPicker
+                assets={pickable}
+                selected={mediaIds}
+                max={meta.media.max}
+                onChange={setMediaIds}
+              />
+            </div>
+          ) : null}
+
+          {Object.entries(meta.text ?? {}).map(([key, spec]) => (
+            <label key={key} className="template-studio__field flex flex-col">
+              <span className="template-studio__label -meta">
+                {spec.label}
+                {spec.max ? ` · ${[...(state.text[key] ?? '')].length}/${spec.max}` : ''}
+              </span>
+              {spec.multiline ? (
+                <textarea
+                  className="template-studio__input -p1"
+                  rows={4}
+                  value={state.text[key] ?? ''}
+                  onChange={(e) => setText(key, e.target.value)}
+                />
+              ) : (
+                <input
+                  className="template-studio__input -p1"
+                  value={state.text[key] ?? ''}
+                  onChange={(e) => setText(key, e.target.value)}
+                />
+              )}
+            </label>
+          ))}
+
+          {meta.kind === 'video' && meta.duration ? (
+            <label className="template-studio__field flex flex-col">
+              <span className="template-studio__label -meta">Duration · {state.duration}s</span>
+              <input
+                type="range"
+                min={meta.duration.min}
+                max={meta.duration.max}
+                step={0.5}
+                value={state.duration}
+                onChange={(e) => setState((s) => ({ ...s, duration: Number(e.target.value) }))}
+              />
+            </label>
+          ) : null}
+
+          {Object.entries(meta.params ?? {}).map(([key, spec]) => (
+            <ParamField
+              key={key}
+              spec={spec}
+              value={state.params[key]}
+              onChange={(v) => setParam(key, v)}
+            />
+          ))}
+        </aside>
+
+        {/* Preview */}
+        <section className="template-studio__stage flex flex-col items-center flex-1">
+          <div ref={stageRef} className="template-studio__frame" data-aspect={state.aspect}>
+            {needsMedia ? (
+              <p className="template-studio__overlay -p1">
+                Pick {meta.media.min} {meta.media.kinds.join(' or ')}
+                {meta.media.min === 1 ? '' : 's'} to preview.
+              </p>
+            ) : preparing ? (
+              <p className="template-studio__overlay -p1">Preparing video…</p>
+            ) : null}
+          </div>
+          {meta.kind === 'video' ? (
+            <div className="template-studio__transport flex items-center">
+              <Button
+                variant="ghost"
+                size="s"
+                onClick={() => (time.playing ? preview.current?.pause() : preview.current?.play())}
+              >
+                {time.playing ? 'Pause' : 'Play'}
+              </Button>
+              <input
+                type="range"
+                className="flex-1"
+                min={0}
+                max={time.duration || 1}
+                step={1 / 30}
+                value={time.t}
+                onChange={(e) => {
+                  preview.current?.pause()
+                  preview.current?.seek(Number(e.target.value))
+                }}
+              />
+              <span className="-meta template-studio__muted">
+                {time.t.toFixed(1)}s / {time.duration.toFixed(1)}s
+              </span>
+            </div>
+          ) : null}
+          {previewError ? <p className="template-studio__error -p1">{previewError}</p> : null}
+        </section>
+
+        {/* Output */}
+        <aside className="template-studio__output flex flex-col shrink-0">
+          <Button
+            variant="primary"
+            disabled={needsMedia || preparing || progress !== null}
+            onClick={startRender}
+          >
+            {progress !== null
+              ? `Rendering… ${Math.round(progress * 100)}%`
+              : meta.kind === 'video'
+                ? 'Render MP4'
+                : 'Render JPEG'}
+          </Button>
+          {progress !== null && meta.kind === 'video' ? (
+            <Button variant="ghost" size="s" onClick={() => abort.current?.abort()}>
+              Cancel
+            </Button>
+          ) : null}
+          {renderError ? <p className="template-studio__error -p1">{renderError}</p> : null}
+
+          {shown ? <RenderResult render={shown} /> : null}
+
+          {templateRenders.length ? (
+            <div className="flex flex-col">
+              <span className="template-studio__label -meta">Recent renders</span>
+              <ul className="template-studio__renders flex flex-col">
+                {templateRenders.slice(0, 8).map((r) => (
+                  <li key={r.id} className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      className="template-studio__render-link -p1"
+                      onClick={() => setLatest(r)}
+                    >
+                      {r.aspect} · {r.status === 'ready' ? bytes(r.sizeBytes ?? 0) : r.status} ·{' '}
+                      {relativeTime(r.createdAt)}
+                    </button>
+                    <Button variant="ghost" size="s" onClick={() => remove.mutate(r.id)}>
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+function RenderResult({ render }: { render: Render }) {
+  if (render.status === 'failed') {
+    return <p className="template-studio__error -p1">Render failed: {render.error}</p>
+  }
+  if (render.status !== 'ready' || !render.url) return null
+  return (
+    <div className="template-studio__result flex flex-col">
+      {render.kind === 'video' ? (
+        <video src={render.url} poster={render.posterUrl ?? undefined} controls loop playsInline />
+      ) : (
+        <img src={render.url} alt="" />
+      )}
+      <div className="flex items-center justify-between">
+        <span className="-meta template-studio__muted">
+          {render.width}×{render.height} · {bytes(render.sizeBytes ?? 0)}
+          {render.elapsedMs ? ` · ${(render.elapsedMs / 1000).toFixed(1)}s` : ''}
+        </span>
+        <a className="template-studio__download -p1" href={render.url} download>
+          Download
+        </a>
+      </div>
+      {render.warnings.length ? (
+        <ul className="template-studio__warnings -p1">
+          {render.warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      ) : (
+        <span className="-meta template-studio__ok">Passes Instagram’s upload checks</span>
+      )}
+    </div>
+  )
+}

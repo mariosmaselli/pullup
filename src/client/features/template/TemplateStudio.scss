@@ -1,0 +1,158 @@
+.template-studio__back {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--muted);
+
+  &:hover {
+    color: var(--ink);
+  }
+}
+
+.template-studio__layout {
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.template-studio__muted {
+  color: var(--muted);
+}
+
+.template-studio__label {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.template-studio__inputs {
+  width: 300px;
+  gap: 18px;
+
+  header {
+    gap: 6px;
+  }
+}
+
+.template-studio__field {
+  gap: 6px;
+
+  input[type='range'] {
+    width: 100%;
+    accent-color: var(--ink);
+  }
+}
+
+.template-studio__input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  outline: none;
+  resize: vertical;
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.template-studio__stage {
+  gap: 12px;
+  min-width: 0;
+}
+
+.template-studio__frame {
+  position: relative;
+  height: min(72vh, 780px);
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: var(--radius-m);
+  background: #101010;
+  box-shadow: 0 20px 50px -30px rgb(0 0 0 / 0.5);
+
+  &[data-aspect='4:5'] {
+    aspect-ratio: 4 / 5;
+    height: min(60vh, 640px);
+  }
+
+  &[data-aspect='1:1'] {
+    aspect-ratio: 1;
+    height: min(56vh, 600px);
+  }
+}
+
+.template-studio__canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.template-studio__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #b8b6b0;
+  text-align: center;
+}
+
+.template-studio__transport {
+  gap: 10px;
+  width: min(100%, 520px);
+
+  input[type='range'] {
+    accent-color: var(--ink);
+  }
+}
+
+.template-studio__output {
+  width: 260px;
+  gap: 16px;
+}
+
+.template-studio__result {
+  gap: 8px;
+
+  video,
+  img {
+    width: 100%;
+    border-radius: var(--radius-m);
+    background: #101010;
+  }
+}
+
+.template-studio__download {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.template-studio__warnings {
+  padding: 8px 12px 8px 26px;
+  border-radius: var(--radius-m);
+  color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 8%, transparent);
+}
+
+.template-studio__ok {
+  color: #3aa66a;
+}
+
+.template-studio__error {
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 8%, transparent);
+}
+
+.template-studio__renders li {
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.template-studio__render-link {
+  color: var(--ink-soft);
+  text-align: left;
+
+  &:hover {
+    color: var(--ink);
+  }
+}

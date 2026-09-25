@@ -10,6 +10,7 @@ import type {
   Segment,
   SystemInfo,
 } from '@shared/types.ts'
+import type { Render } from '@shared/template.ts'
 import type {
   IdeaStatus,
   Platform,
@@ -221,3 +222,16 @@ export const useUpdatePost = () =>
       publishedAt?: string | null
     }) => api<PostDetail>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
   )
+
+// ── Renders ───────────────────────────────────────────────────────────────────────────────
+
+export const useRenders = () =>
+  useQuery({ queryKey: ['renders'], queryFn: () => api<Render[]>('/renders') })
+
+export function useDeleteRender() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<null>(`/renders/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['renders'] }),
+  })
+}

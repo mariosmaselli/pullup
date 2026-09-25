@@ -238,6 +238,15 @@ export function createAssetStore(db: DB) {
       notify('assets')
     },
 
+    // Adds one derivative without touching the others (e.g. a lazily built video proxy).
+    addDerivative(assetId: string, row: Omit<DerivativeRow, 'asset_id' | 'created_at'>) {
+      db.prepare(
+        `INSERT INTO asset_derivatives (id, asset_id, role, file_path, width, height, time_ms, created_at)
+         VALUES (@id, @asset_id, @role, @file_path, @width, @height, @time_ms, @created_at)`
+      ).run({ ...row, asset_id: assetId, created_at: now() })
+      notify('assets')
+    },
+
     idsWithStatus(statuses: ProcessingStatus[]): string[] {
       return (
         db

@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { extractFrame, ffmpegVersion, probe, sipsSize, sipsToJpeg } from '../lib/ffmpeg.ts'
+import {
+  extractFrame,
+  ffmpegVersion,
+  makeProxy,
+  probe,
+  sipsSize,
+  sipsToJpeg,
+} from '../lib/ffmpeg.ts'
 import { downloadImage, fetchLinkMeta } from '../lib/link-meta.ts'
 import { fromLibraryPath, library, toLibraryPath } from '../library.ts'
 import type { AssetRow, AssetStore, DerivativeRow } from './assets.ts'
@@ -167,7 +174,41 @@ export function createProcessor(assets: AssetStore) {
     }
   }
 
+  // Video proxies for the template engine, built on demand one at a time (they can take a while
+  // for long recordings). Concurrent requests for the same asset share one build.
+  const proxyJobs = new Map<string, Promise<DerivativeRow>>()
+  let proxyChain: Promise<unknown> = Promise.resolve()
+
+  function ensureProxy(assetId: string): Promise<DerivativeRow> {
+    const existing = assets.derivativeRows(assetId).find((d) => d.role === 'proxy')
+    if (existing) return Promise.resolve(existing)
+    const pending = proxyJobs.get(assetId)
+    if (pending) return pending
+
+    const job = proxyChain.then(async () => {
+      const row = assets.row(assetId)
+      if (!row || row.kind !== 'video' || !row.file_path) throw new Error('Not a video asset')
+      if (!ffmpegVersion()) throw new Error('ffmpeg is not installed — brew install ffmpeg')
+      const dir = join(library.cache, assetId)
+      await mkdir(dir, { recursive: true })
+      const path = join(dir, 'proxy.mp4')
+      await makeProxy(fromLibraryPath(row.file_path), path, {
+        width: row.width,
+        height: row.height,
+      })
+      const size = await probe(path)
+      assets.addDerivative(assetId, derivative('proxy', path, size))
+      return assets.derivativeRows(assetId).find((d) => d.role === 'proxy')!
+    })
+    proxyChain = job.catch(() => {})
+    proxyJobs.set(assetId, job)
+    job.finally(() => proxyJobs.delete(assetId)).catch(() => {})
+    return job
+  }
+
   return {
+    ensureProxy,
+
     enqueue(id: string) {
       if (!queue.includes(id)) queue.push(id)
       pump()

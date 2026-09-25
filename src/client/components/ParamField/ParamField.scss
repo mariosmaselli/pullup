@@ -1,0 +1,39 @@
+.param-field {
+  gap: 6px;
+
+  input[type='range'] {
+    width: 100%;
+    accent-color: var(--ink);
+  }
+}
+
+.param-field__label {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.param-field__color {
+  gap: 8px;
+
+  input {
+    width: 36px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: none;
+    cursor: pointer;
+  }
+
+  .-meta {
+    color: var(--ink-soft);
+  }
+}
+
+.param-field__select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  cursor: pointer;
+}

@@ -77,7 +77,7 @@ export interface LinkMeta {
 }
 
 export interface AssetDerivative {
-  role: 'thumb' | 'poster' | 'frame' | 'og_image'
+  role: 'thumb' | 'poster' | 'frame' | 'og_image' | 'proxy'
   url: string
   width: number | null
   height: number | null

@@ -27,6 +27,8 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
   add CORS or routes that change state on GET.
 - **The Anthropic key never leaves the server.** It lives in `.env` (0600), set via Settings
   (`ai/key.ts`); the API only returns a hint. Tests use a throwaway `.env` (`PULLUP_ENV_FILE`).
+- **Templates follow the contract** in `src/shared/template.ts`: time only from `t`, pure `update()`,
+  GSAP only via `ctx.timeline()`, opaque sRGB output. Rendering runs in a worker; never on the main thread.
 - **Dependencies must earn their place.** Ask before adding one.
 
 ## Map
@@ -45,6 +47,10 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | Ideas / posts storage | [src/server/services/ideas.ts](src/server/services/ideas.ts), [posts.ts](src/server/services/posts.ts) |
 | Draft editor (shell / X+LinkedIn / Instagram frames) | [src/client/features/draft/](src/client/features/draft) |
 | Platform rules (AI) + editor rules (UI) — keep in step | [src/server/ai/prompts/platforms.md](src/server/ai/prompts/platforms.md), [src/client/lib/platforms.ts](src/client/lib/platforms.ts) |
+| Template contract (types + rules) | [src/shared/template.ts](src/shared/template.ts), authoring guide [templates/README.md](templates/README.md) |
+| Templates (one folder each) | [templates/](templates) |
+| Render engine (worker, session, media, encoder) | [src/client/render/](src/client/render) |
+| Renders (storage, output checks) | [src/server/services/renders.ts](src/server/services/renders.ts) |
 | Env config | [src/server/config.ts](src/server/config.ts), `.env` |
 | Library paths | [src/server/library.ts](src/server/library.ts) |
 | DB + migration runner | [src/server/db/index.ts](src/server/db/index.ts) |

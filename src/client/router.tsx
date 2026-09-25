@@ -9,6 +9,8 @@ import { DraftsView } from './features/drafts/DraftsView.tsx'
 import { DraftView } from './features/draft/DraftView.tsx'
 import { CalendarView } from './features/calendar/CalendarView.tsx'
 import { SettingsView } from './features/settings/SettingsView.tsx'
+import { TemplatesView } from './features/templates/TemplatesView.tsx'
+import { TemplateStudio } from './features/template/TemplateStudio.tsx'
 
 const rootRoute = createRootRoute({ component: AppShell })
 
@@ -59,6 +61,16 @@ const draftRoute = createRoute({
     skipped: typeof search.skipped === 'string' ? search.skipped : undefined,
   }),
 })
+const templatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/templates',
+  component: TemplatesView,
+})
+const templateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/templates/$id',
+  component: TemplateStudio,
+})
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/calendar',
@@ -79,6 +91,8 @@ const routeTree = rootRoute.addChildren([
   ideasRoute,
   draftsRoute,
   draftRoute,
+  templatesRoute,
+  templateRoute,
   calendarRoute,
   settingsRoute,
 ])

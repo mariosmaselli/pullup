@@ -25,6 +25,8 @@ export default defineConfig(({ mode }) => {
       cors: false,
       proxy: { '/api': `http://localhost:${port + 1}` },
     },
+    // The render worker imports templates (three, gsap) with code splitting.
+    worker: { format: 'es' as const },
     build: { outDir: 'dist' },
   }
 })

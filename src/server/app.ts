@@ -11,6 +11,7 @@ import { createProcessor } from './services/processing.ts'
 import { createProjectStore } from './services/projects.ts'
 import { createIdeaStore } from './services/ideas.ts'
 import { createPostStore } from './services/posts.ts'
+import { createRenderStore } from './services/renders.ts'
 import { createAi, providerFor, type ProviderFactory } from './ai/index.ts'
 import { createKeyManager, verifyWithAnthropic, type KeyVerifier } from './ai/key.ts'
 import { config } from './config.ts'
@@ -25,10 +26,18 @@ import { projectRoutes } from './routes/projects.ts'
 import { ideaRoutes } from './routes/ideas.ts'
 import { postRoutes } from './routes/posts.ts'
 import { settingsRoutes } from './routes/settings.ts'
+import { renderRoutes } from './routes/renders.ts'
 
-// Serves one library subfolder (media/ or cache/). Nothing else in the library is reachable —
-// serveStatic also rejects `..` and dot segments.
-const libraryFiles = (folder: 'media' | 'cache'): MiddlewareHandler => {
+const FONT_MIME: Record<string, string> = {
+  otf: 'font/otf',
+  ttf: 'font/ttf',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+}
+
+// Serves one library subfolder (media/, cache/ or fonts/). Nothing else in the library is
+// reachable — serveStatic also rejects `..` and dot segments.
+const libraryFiles = (folder: 'media' | 'cache' | 'fonts'): MiddlewareHandler => {
   const prefix = `/api/files/${folder}`
   const serve = serveStatic({
     root: library[folder],
@@ -38,7 +47,8 @@ const libraryFiles = (folder: 'media' | 'cache'): MiddlewareHandler => {
     const res = await serve(c, next)
     if (!res) return
     // Hono's MIME table lacks some capture formats (.mov, .heic…).
-    const mime = mimeFromName(c.req.path)
+    const mime =
+      mimeFromName(c.req.path) ?? FONT_MIME[c.req.path.split('.').pop()?.toLowerCase() ?? '']
     if (mime) res.headers.set('Content-Type', mime)
     res.headers.set('Cache-Control', 'private, max-age=31536000, immutable')
     // Library files are content, never code: opened directly (e.g. a captured SVG in its own
@@ -66,6 +76,8 @@ export function createApp(db: DB, options: AppOptions = {}) {
   const capture = createCapture(assets, processor)
   const ideas = createIdeaStore(db)
   const posts = createPostStore(db)
+  const renders = createRenderStore(db)
+  renders.failStale()
   const keys = createKeyManager({
     verify: options.verifyKey ?? verifyWithAnthropic,
     onChange: (apiKey) => ai.setProvider(providerFor(apiKey, options.providerFactory)),
@@ -85,8 +97,10 @@ export function createApp(db: DB, options: AppOptions = {}) {
     .use('*', localOnly([config.publicPort, config.port]))
     .use('/files/media/*', libraryFiles('media'))
     .use('/files/cache/*', libraryFiles('cache'))
+    .use('/files/fonts/*', libraryFiles('fonts'))
     .route('/system', systemRoutes(db, ai, keys))
     .route('/settings', settingsRoutes(keys))
+    .route('/renders', renderRoutes(renders))
     .route('/profiles', profileRoutes(db))
     .route('/assets', assetRoutes({ assets, projects, capture, processor, ai }))
     .route('/ideas', ideaRoutes(ideas, ai))

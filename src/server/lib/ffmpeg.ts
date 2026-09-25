@@ -101,6 +101,164 @@ export async function extractFrame(
   ])
 }
 
+export interface StreamInfo {
+  durationMs: number | null
+  peakBitrate: number | null
+  video: {
+    codec: string
+    pixFmt: string
+    width: number | null
+    height: number | null
+    fps: number | null
+    hasBFrames: boolean
+  } | null
+}
+
+// Codec details for output validation, plus the peak bitrate over any 1-second window.
+export async function probeStreams(path: string): Promise<StreamInfo> {
+  const out = await run('ffprobe', [
+    '-v',
+    'error',
+    '-print_format',
+    'json',
+    '-show_streams',
+    '-show_format',
+    path,
+  ])
+  const data = JSON.parse(out) as {
+    streams?: {
+      codec_type?: string
+      codec_name?: string
+      pix_fmt?: string
+      width?: number
+      height?: number
+      avg_frame_rate?: string
+      has_b_frames?: number
+    }[]
+    format?: { duration?: string }
+  }
+  const v = data.streams?.find((s) => s.codec_type === 'video')
+  const [num, den] = (v?.avg_frame_rate ?? '0/1').split('/').map(Number)
+  const seconds = Number(data.format?.duration)
+
+  let peakBitrate: number | null = null
+  if (v && v.codec_name !== 'mjpeg' && v.codec_name !== 'png') {
+    const packets = await run('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'packet=pts_time,size',
+      '-of',
+      'csv=p=0',
+      path,
+    ])
+    const perSecond = new Map<number, number>()
+    for (const line of packets.split('\n')) {
+      const [time, size] = line.split(',').map(Number)
+      if (!Number.isFinite(time) || !Number.isFinite(size)) continue
+      const bucket = Math.floor(time!)
+      perSecond.set(bucket, (perSecond.get(bucket) ?? 0) + size! * 8)
+    }
+    peakBitrate = perSecond.size ? Math.max(...perSecond.values()) : null
+  }
+
+  return {
+    durationMs: Number.isFinite(seconds) ? Math.round(seconds * 1000) : null,
+    peakBitrate,
+    video: v
+      ? {
+          codec: v.codec_name ?? 'unknown',
+          pixFmt: v.pix_fmt ?? 'unknown',
+          width: v.width ?? null,
+          height: v.height ?? null,
+          fps: num && den ? Math.round((num / den) * 100) / 100 : null,
+          hasBFrames: (v.has_b_frames ?? 0) > 0,
+        }
+      : null,
+  }
+}
+
+// Rewrites the H.264 colour tags to BT.709 without re-encoding (WebCodecs tags sRGB transfer).
+export async function retagBt709(input: string, output: string) {
+  await run('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    input,
+    '-c',
+    'copy',
+    '-bsf:v',
+    'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
+    '-color_primaries',
+    'bt709',
+    '-color_trc',
+    'bt709',
+    '-colorspace',
+    'bt709',
+    '-movflags',
+    '+faststart',
+    output,
+  ])
+}
+
+// The template engine's decode source: constant 30 fps, a keyframe every 15 frames and no
+// B-frames (fast, exact seeking), 8-bit 4:2:0 tagged BT.709, long side at most 1920, no audio.
+export async function makeProxy(
+  input: string,
+  output: string,
+  size: { width: number | null; height: number | null }
+) {
+  const long = Math.max(size.width ?? 1920, size.height ?? 1920)
+  const factor = Math.min(1, 1920 / long)
+  const even = (n: number) => Math.max(2, Math.round((n * factor) / 2) * 2)
+  const scale =
+    size.width && size.height ? `scale=${even(size.width)}:${even(size.height)}:flags=lanczos,` : ''
+  await run(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-i',
+      input,
+      '-an',
+      '-sn',
+      '-dn',
+      '-vf',
+      `${scale}fps=30,format=yuv420p`,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '18',
+      '-g',
+      '15',
+      '-keyint_min',
+      '15',
+      '-bf',
+      '0',
+      '-sc_threshold',
+      '0',
+      '-colorspace',
+      'bt709',
+      '-color_primaries',
+      'bt709',
+      '-color_trc',
+      'bt709',
+      '-movflags',
+      '+faststart',
+      output,
+    ],
+    30 * 60_000
+  )
+}
+
 // macOS sips for HEIC/HEIF, which ffmpeg decodes badly. Scales to maxWidth, never up.
 export async function sipsToJpeg(
   input: string,

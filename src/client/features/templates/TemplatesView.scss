@@ -1,0 +1,33 @@
+.templates-view__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.templates-view__card {
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  transition:
+    border-color var(--duration) var(--ease-out),
+    transform 320ms var(--ease-out);
+
+  &:hover {
+    border-color: var(--muted);
+    transform: translateY(-2px);
+  }
+}
+
+.templates-view__kind {
+  padding: 1px 8px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+}
+
+.templates-view__aspects,
+.templates-view__media,
+.templates-view__description {
+  color: var(--muted);
+}

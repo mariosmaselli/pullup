@@ -1,14 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { ASSET_SOURCES, VISIBILITY } from '@shared/constants.ts'
-import { library } from '../library.ts'
+import { fileUrl, library } from '../library.ts'
 import { MAX_FILE_BYTES } from '../lib/files.ts'
+import { BodyTooLargeError, streamBodyToFile } from '../lib/stream-body.ts'
 import { CaptureError, type Capture } from '../services/capture.ts'
 import { now, type AssetStore } from '../services/assets.ts'
 import type { Processor } from '../services/processing.ts'
@@ -73,20 +71,13 @@ export function assetRoutes({ assets, projects, capture, processor, ai }: Deps) 
         if (!body) throw new CaptureError('Empty upload')
 
         const tmp = join(library.tmp, `${randomUUID()}.part`)
-        const hash = createHash('sha256')
-        let size = 0
         try {
-          await pipeline(
-            Readable.fromWeb(body as import('node:stream/web').ReadableStream),
-            async function* (source) {
-              for await (const chunk of source as AsyncIterable<Buffer>) {
-                size += chunk.length
-                if (size > MAX_FILE_BYTES) throw new CaptureError('File is larger than 8 GB', 413)
-                hash.update(chunk)
-                yield chunk
-              }
-            },
-            createWriteStream(tmp)
+          const { size, sha256 } = await streamBodyToFile(body, tmp, MAX_FILE_BYTES).catch(
+            (err) => {
+              if (err instanceof BodyTooLargeError)
+                throw new CaptureError('File is larger than 8 GB', 413)
+              throw err
+            }
           )
           if (size === 0) throw new CaptureError('Empty upload')
 
@@ -100,7 +91,7 @@ export function assetRoutes({ assets, projects, capture, processor, ai }: Deps) 
               Number.isFinite(lastModified) && lastModified > 0
                 ? new Date(lastModified)
                 : undefined,
-            checksum: hash.digest('hex'),
+            checksum: sha256,
             temporary: true,
           })
           return c.json(result, result.duplicate ? 200 : 201)
@@ -136,6 +127,35 @@ export function assetRoutes({ assets, projects, capture, processor, ai }: Deps) 
           ...(triaged === undefined ? {} : { triaged_at: triaged ? now() : null }),
         })
         return c.json(assets.get(id))
+      })
+
+      // What a template reads for this asset: a video's proxy (built on first use) or an image's
+      // original (its JPEG preview for HEIC, which browsers can't decode).
+      .get('/:id/render-source', async (c) => {
+        const row = assets.row(c.req.param('id'))
+        if (!row || (row.kind !== 'image' && row.kind !== 'video') || !row.file_path) {
+          return c.json({ error: 'Not an image or video asset' }, 404)
+        }
+        if (row.kind === 'video') {
+          const proxy = await processor.ensureProxy(row.id)
+          return c.json({
+            assetId: row.id,
+            kind: 'video',
+            url: fileUrl(proxy.file_path, proxy.created_at),
+            width: proxy.width ?? row.width,
+            height: proxy.height ?? row.height,
+            duration: (row.duration_ms ?? 0) / 1000,
+          })
+        }
+        const heif = /image\/hei[cf]/.test(row.mime ?? '')
+        const poster = assets.derivativeRows(row.id).find((d) => d.role === 'poster')
+        return c.json({
+          assetId: row.id,
+          kind: 'image',
+          url: heif && poster ? fileUrl(poster.file_path) : fileUrl(row.file_path),
+          width: row.width,
+          height: row.height,
+        })
       })
 
       .post('/:id/analyze', async (c) => {

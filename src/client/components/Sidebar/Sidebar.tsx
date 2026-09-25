@@ -12,6 +12,7 @@ const NAV: { to: string; label: string; count?: CountKey }[] = [
   { to: '/projects', label: 'Projects' },
   { to: '/ideas', label: 'Ideas', count: 'ideas' },
   { to: '/drafts', label: 'Drafts', count: 'posts' },
+  { to: '/templates', label: 'Templates' },
   { to: '/calendar', label: 'Calendar' },
 ]
 

@@ -121,8 +121,12 @@ preview, claims and questions, revisions.
 | M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow** built; live run pending API key |
 | M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | A post goes draft → published |
 | M6 | Multi-platform drafts: one idea → X, LinkedIn, IG story frames, IG carousel slides + caption; platform styles in Settings | ✅ Frames/slides carry their own media; editor per platform |
-| M7 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
-| M8 | Discovery + digests: what can I post, unused material, stale projects, weekly digest | Suggestions cite sources, avoid repeats |
+| M7 | Template engine: WebGL/Three.js/GSAP/canvas templates in a worker, frame-stepped MP4 (WebCodecs + Mediabunny) and JPEG export, video proxies, render checks; Templates studio | ✅ 6 s 1080×1920 WebGL video in ~1 s; Text story matches Mario's reference |
+| M8 | Story/carousel builder: templates per frame/slide in the draft editor, render into the post | |
+| M9 | Publishing by hand: calendar, download per platform, mark published + URL | |
+| M10 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
+| M11 | Discovery + digests: what can I post, unused material, stale projects, weekly digest | Suggestions cite sources, avoid repeats |
+| Later | Connected accounts + direct posting: LinkedIn → X → Instagram (see docs/research/publishing-apis.md) | |
 
 First workflow to validate: **drop a screen recording → assign project → analyze → 3–5 ideas with
 sources → X drafts in 2–3 angles → edit → save.**
