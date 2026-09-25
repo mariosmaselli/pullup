@@ -20,6 +20,16 @@ export function SettingsView() {
             label="ffmpeg"
             value={system ? (system.ffmpeg ?? 'Not found — install with Homebrew') : undefined}
           />
+          <Row
+            label="AI"
+            value={
+              system
+                ? system.ai.enabled
+                  ? `Claude Opus 5 · ${system.ai.runs} call${system.ai.runs === 1 ? '' : 's'} · $${system.ai.costUsd.toFixed(2)} spent`
+                  : 'Not set up — add ANTHROPIC_API_KEY to pullup/.env'
+                : undefined
+            }
+          />
           <Row label="Version" value={system?.version} mono />
         </dl>
       </section>
