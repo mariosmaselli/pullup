@@ -5,7 +5,7 @@ export const meta: TemplateMeta = {
   name: 'Slow zoom',
   description:
     'One image or clip with a slow push-in, film grain and an optional caption that rises in.',
-  version: 1,
+  version: 2,
   kind: 'video',
   aspects: ['9:16', '4:5', '1:1'],
   fps: 30,

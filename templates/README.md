@@ -39,7 +39,10 @@ GSAP, video texture) first.
 - **Randomness:** `ctx.random()` in `setup()` only; `ctx.hash(frame, k)` for per-frame noise (grain).
 - **Opaque output:** WebGL `{ alpha: false }` / 2D `{ alpha: false }` (or always write alpha 1).
 - **Colour:** keep everything sRGB (`renderer.outputColorSpace = SRGBColorSpace`, textures
-  `colorSpace = SRGBColorSpace`). Pullup tags the MP4 BT.709.
+  `colorSpace = SRGBColorSpace`). Pullup tags the MP4 BT.709. **Custom `ShaderMaterial`s must end
+  the fragment shader with `#include <colorspace_fragment>`** — textures are sampled as linear
+  light and three.js only converts built-in materials back to sRGB; without it the render is
+  noticeably darker than the source.
 - **Design units:** layout is designed at 1080 px wide; multiply by `ctx.scale` (the preview is
   half size).
 - **Images** come upright and colour-managed (≤ 2160 px). For Three.js use `imageTexture()` from

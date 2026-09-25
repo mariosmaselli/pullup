@@ -54,6 +54,9 @@ export function coverScale(w: number, h: number, W: number, H: number) {
     : new THREE.Vector2(1, source / target)
 }
 
+// Custom ShaderMaterial fragment shaders must end with `#include <colorspace_fragment>`:
+// sRGB textures are decoded to linear when sampled, and three.js only converts back to the sRGB
+// output for its built-in materials. Without it everything renders too dark.
 export const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
   void main() {

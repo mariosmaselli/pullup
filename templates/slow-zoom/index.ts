@@ -38,6 +38,8 @@ const fragment = /* glsl */ `
 
     color += (rand(vUv * 1000.0) - 0.5) * uGrain;
     gl_FragColor = vec4(color, 1.0);
+    // Textures are decoded to linear light; convert back to the sRGB output.
+    #include <colorspace_fragment>
   }
 `
 
