@@ -59,3 +59,9 @@
 .asset-ai__error {
   color: var(--signal);
 }
+
+.asset-ai__link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

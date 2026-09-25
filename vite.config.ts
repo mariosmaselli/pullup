@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // The client reads no env vars. Without this Vite restarts (reloading the page) whenever
+    // Settings saves the API key to .env.
+    envDir: false as const,
     resolve: {
       alias: {
         '@client': fileURLToPath(new URL('./src/client', import.meta.url)),
@@ -18,6 +21,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port,
       strictPort: true,
+      // Everything is same-origin; Vite's default CORS would let other localhost pages read /api.
+      cors: false,
       proxy: { '/api': `http://localhost:${port + 1}` },
     },
     build: { outDir: 'dist' },

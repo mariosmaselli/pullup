@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import type { Asset } from '@shared/types.ts'
 import { ApiError } from '../../lib/api.ts'
 import { relativeTime } from '../../lib/format.ts'
@@ -35,8 +35,11 @@ export function AssetAi({ asset }: { asset: Asset }) {
       <section className="asset-ai">
         <h3 className="asset-ai__heading -meta">AI</h3>
         <p className="asset-ai__muted -p1">
-          AI isn’t set up yet. Add <code>ANTHROPIC_API_KEY</code> to <code>pullup/.env</code> and
-          restart Pullup.
+          AI isn’t set up yet. Add your Anthropic API key in{' '}
+          <Link to="/settings" className="asset-ai__link">
+            Settings
+          </Link>
+          .
         </p>
       </section>
     )

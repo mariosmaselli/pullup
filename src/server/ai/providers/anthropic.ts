@@ -70,7 +70,7 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
         if (err instanceof AiError) throw err
         if (err instanceof Anthropic.AuthenticationError) {
           throw new AiError(
-            'The Anthropic API key was rejected — check ANTHROPIC_API_KEY in .env.',
+            'The Anthropic API key was rejected — update it in Settings (or in your shell, if ANTHROPIC_API_KEY is exported there).',
             503
           )
         }
@@ -92,7 +92,7 @@ export const unavailableProvider: AiProvider = {
   model: 'none',
   generate() {
     return Promise.reject(
-      new AiError('AI is not set up yet — add ANTHROPIC_API_KEY to .env and restart Pullup.', 503)
+      new AiError('AI is not set up yet — add your Anthropic API key in Settings.', 503)
     )
   },
 }

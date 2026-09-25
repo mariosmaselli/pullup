@@ -1,0 +1,60 @@
+.ai-key {
+  gap: 8px;
+  padding: 12px 0;
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .button + .button {
+    margin-left: 4px;
+  }
+}
+
+.ai-key__row {
+  gap: 8px;
+}
+
+.ai-key__input {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  outline: none;
+  -webkit-text-security: disc;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.ai-key__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #3aa66a;
+  vertical-align: 1px;
+}
+
+.ai-key__help {
+  max-width: 64ch;
+  color: var(--muted);
+}
+
+.ai-key__error {
+  color: var(--signal);
+}
+
+.ai-key--connected {
+  flex-wrap: wrap;
+}
+
+.ai-key__full {
+  flex-basis: 100%;
+}

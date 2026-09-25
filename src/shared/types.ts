@@ -29,7 +29,7 @@ export interface SystemInfo {
     database: string
   }
   ffmpeg: string | null
-  ai: { enabled: boolean; runs: number; costUsd: number }
+  ai: { enabled: boolean; runs: number; costUsd: number; key: AiKeyStatus }
   counts: {
     inbox: number
     assets: number
@@ -54,6 +54,13 @@ export interface Project {
   lastCapturedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+// The key itself is never sent to the browser — only whether it's set and a short hint.
+export interface AiKeyStatus {
+  configured: boolean
+  source: 'environment' | 'env-file' | null
+  hint: string | null
 }
 
 export interface LinkMeta {

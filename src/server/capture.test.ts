@@ -92,6 +92,9 @@ describe('capture', () => {
     const thumb = await app.request(asset.thumbUrl!)
     expect(thumb.status).toBe(200)
     expect(thumb.headers.get('content-type')).toBe('image/jpeg')
+    // Library files are content, never code.
+    expect(thumb.headers.get('content-security-policy')).toContain('sandbox')
+    expect(thumb.headers.get('x-content-type-options')).toBe('nosniff')
   })
 
   it('does not serve anything outside media/ and cache/', async () => {

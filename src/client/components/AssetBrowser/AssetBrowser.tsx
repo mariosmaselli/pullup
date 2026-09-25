@@ -2,7 +2,6 @@ import { useCallback, useState, type ReactNode } from 'react'
 import type { Asset } from '@shared/types.ts'
 import { AssetGrid } from '../AssetGrid/AssetGrid.tsx'
 import { AssetPanel } from '../AssetPanel/AssetPanel.tsx'
-import './AssetBrowser.scss'
 
 interface Props {
   assets: Asset[] | undefined
@@ -11,6 +10,7 @@ interface Props {
 }
 
 // Grid + detail panel. The panel reads from the list, so edits and processing updates flow in.
+// The panel overlays the grid — the grid never reflows, so opening/closing doesn't shift cards.
 export function AssetBrowser({ assets, isLoading, empty }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const close = useCallback(() => setSelectedId(null), [])
@@ -20,7 +20,7 @@ export function AssetBrowser({ assets, isLoading, empty }: Props) {
   if (!assets?.length) return <>{empty}</>
 
   return (
-    <div className="asset-browser" data-panel={!!selected}>
+    <div className="asset-browser">
       <AssetGrid assets={assets} selectedId={selectedId} onSelect={setSelectedId} />
       {selected ? <AssetPanel key={selected.id} asset={selected} onClose={close} /> : null}
     </div>

@@ -1,8 +1,17 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { Asset, CaptureResult, Idea, PostDetail, Project } from '@shared/types.ts'
+import { config } from './config.ts'
+import type {
+  AiKeyStatus,
+  Asset,
+  CaptureResult,
+  Idea,
+  PostDetail,
+  Project,
+  SystemInfo,
+} from '@shared/types.ts'
 import { ensureLibrary, library } from './library.ts'
 import { openDatabase } from './db/index.ts'
 import { createApp } from './app.ts'
@@ -131,7 +140,7 @@ describe('ai', () => {
   it('explains how to enable AI when no key is set', async () => {
     const res = await offline.request(`/api/assets/${assetId}/analyze`, { method: 'POST' })
     expect(res.status).toBe(503)
-    expect(((await res.json()) as { error: string }).error).toMatch(/ANTHROPIC_API_KEY/)
+    expect(((await res.json()) as { error: string }).error).toMatch(/API key in Settings/)
   })
 
   it('analyzes an asset from its frames and Mario’s notes', async () => {
@@ -232,5 +241,99 @@ describe('ai', () => {
     const res = await app.request(`/api/assets/${assetId}/analyze`, { method: 'POST' })
     expect(res.status).toBe(403)
     expect(calls.length).toBe(before)
+  })
+})
+
+describe('api key settings', () => {
+  const verified: string[] = []
+  const keyed = createApp(db, {
+    providerFactory: () => fake,
+    verifyKey: async (key) => {
+      verified.push(key)
+      if (key.includes('bad')) {
+        const { AiError } = await import('./ai/provider.ts')
+        throw new AiError('Anthropic rejected this key.', 400)
+      }
+    },
+  }).app
+  const put = (apiKey: string) =>
+    keyed.request('/api/settings/ai-key', { method: 'PUT', body: JSON.stringify({ apiKey }) })
+  const good = 'sk-ant-api03-' + 'A'.repeat(40) + 'wxyz'
+
+  it('rejects malformed and unverified keys without writing them', async () => {
+    expect((await put('not-a-key')).status).toBe(400)
+    expect(verified).toEqual([])
+    const res = await put('sk-ant-bad-' + 'x'.repeat(30))
+    expect(res.status).toBe(400)
+    expect(existsSync(config.envFile) ? readFileSync(config.envFile, 'utf8') : '').not.toContain(
+      'bad'
+    )
+  })
+
+  it('saves a verified key to .env, enables AI and only ever returns a hint', async () => {
+    const res = await put(`  ${good}\n`)
+    expect(res.status).toBe(200)
+    const status = (await res.json()) as AiKeyStatus
+    expect(status).toEqual({ configured: true, source: 'env-file', hint: 'sk-ant-…wxyz' })
+
+    expect(readFileSync(config.envFile, 'utf8')).toContain(`ANTHROPIC_API_KEY=${good}\n`)
+    expect(statSync(config.envFile).mode & 0o777).toBe(0o600)
+
+    const system = (await (await keyed.request('/api/system')).json()) as SystemInfo
+    expect(system.ai.enabled).toBe(true)
+    expect(JSON.stringify(system)).not.toContain(good)
+    expect(
+      JSON.stringify(await (await keyed.request('/api/settings/ai-key')).json())
+    ).not.toContain(good)
+  })
+
+  it('removes the key', async () => {
+    const res = await keyed.request('/api/settings/ai-key', { method: 'DELETE' })
+    expect(((await res.json()) as AiKeyStatus).configured).toBe(false)
+    expect(readFileSync(config.envFile, 'utf8')).not.toContain('ANTHROPIC_API_KEY')
+    const system = (await (await keyed.request('/api/system')).json()) as SystemInfo
+    expect(system.ai.enabled).toBe(false)
+  })
+
+  it('blocks requests from other websites', async () => {
+    const evil = await keyed.request('/api/settings/ai-key', {
+      method: 'PUT',
+      headers: { Origin: 'https://evil.example' },
+      body: JSON.stringify({ apiKey: good }),
+    })
+    expect(evil.status).toBe(403)
+
+    const otherLocalApp = await keyed.request('/api/assets/note', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:4321' },
+      body: JSON.stringify({ body: 'x' }),
+    })
+    expect(otherLocalApp.status).toBe(403)
+
+    const noOriginCrossSite = await keyed.request('/api/assets/note', {
+      method: 'POST',
+      headers: { 'Sec-Fetch-Site': 'cross-site' },
+      body: JSON.stringify({ body: 'x' }),
+    })
+    expect(noOriginCrossSite.status).toBe(403)
+
+    const rebinding = await keyed.request('/api/system', { headers: { Host: 'evil.example:4500' } })
+    expect(rebinding.status).toBe(403)
+
+    // Reads too: another local dev server can't fetch Pullup's data.
+    const crossRead = await keyed.request('/api/assets', {
+      headers: { Origin: 'http://localhost:4321' },
+    })
+    expect(crossRead.status).toBe(403)
+
+    const sameApp = await keyed.request('/api/assets/note', {
+      method: 'POST',
+      headers: {
+        Origin: `http://localhost:${config.publicPort}`,
+        Host: `localhost:${config.publicPort}`,
+      },
+      body: JSON.stringify({ body: 'from Pullup itself' }),
+    })
+    expect(sameApp.status).toBe(201)
   })
 })

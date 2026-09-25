@@ -22,6 +22,11 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
   component SCSS is unlayered and wins.
 - **AI calls go through `runAi`** (logs `ai_runs`) and a task in `ai/tasks/`. Change a prompt by adding
   `prompt.vN+1.md`, not editing the old one. Tests use a fake provider — never the real API.
+- **The API is local-only and same-origin.** `lib/request-guard.ts` rejects non-localhost Hosts and
+  any foreign Origin; Vite runs with `cors: false`. Library files are served with a sandbox CSP. Don't
+  add CORS or routes that change state on GET.
+- **The Anthropic key never leaves the server.** It lives in `.env` (0600), set via Settings
+  (`ai/key.ts`); the API only returns a hint. Tests use a throwaway `.env` (`PULLUP_ENV_FILE`).
 - **Dependencies must earn their place.** Ask before adding one.
 
 ## Map

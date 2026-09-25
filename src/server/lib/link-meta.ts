@@ -3,6 +3,14 @@ import type { LinkMeta } from '@shared/types.ts'
 const MAX_HTML_BYTES = 1.5 * 1024 * 1024
 const USER_AGENT = 'Mozilla/5.0 (Macintosh) Pullup/0.1 (+link preview)'
 
+const RASTER_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+}
+
 const ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -106,10 +114,14 @@ export async function downloadImage(url: string): Promise<{ bytes: Buffer; ext: 
     signal: AbortSignal.timeout(15_000),
     headers: { 'User-Agent': USER_AGENT },
   })
-  const type = res.headers.get('content-type') ?? ''
-  if (!res.ok || !type.startsWith('image/')) return null
+  // Raster formats only: an SVG or HTML "image" could carry script.
+  const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
+  const ext = RASTER_EXT[type]
+  if (!res.ok || !ext) {
+    await res.body?.cancel()
+    return null
+  }
   const bytes = Buffer.from(await res.arrayBuffer())
   if (bytes.byteLength > 20 * 1024 * 1024) return null
-  const ext = type.split('/')[1]?.split(/[;+]/)[0]?.replace('jpeg', 'jpg') || 'img'
   return { bytes, ext }
 }

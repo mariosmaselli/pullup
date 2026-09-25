@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { extractFrame, ffmpegVersion, probe, sipsSize, sipsToJpeg } from '../lib/ffmpeg.ts'
 import { downloadImage, fetchLinkMeta } from '../lib/link-meta.ts'
@@ -110,30 +110,33 @@ export function createProcessor(assets: AssetStore) {
     assets.update(row.id, { width: meta.width, height: meta.height, duration_ms: meta.durationMs })
 
     const duration = meta.durationMs ?? 0
-    const derivatives: NewDerivative[] = []
 
     // Evenly spaced frames, skipping the very start and end (often blank in screen recordings).
+    // Extracted in parallel — each is an independent seek.
     const count = duration < 3000 ? 1 : FRAME_COUNT
     const times = Array.from({ length: count }, (_, i) =>
       Math.round((duration * (i + 1)) / (count + 1))
     )
-    for (const [i, time] of times.entries()) {
-      const path = join(dir, `frame-${i + 1}.jpg`)
-      await extractFrame(input, path, time, FRAME_WIDTH)
-      derivatives.push(
-        derivative('frame', path, scaled(meta.width, meta.height, FRAME_WIDTH), time)
-      )
-    }
+    const frameSize = scaled(meta.width, meta.height, FRAME_WIDTH)
+    const frames = await Promise.all(
+      times.map(async (time, i) => {
+        const path = join(dir, `frame-${i + 1}.jpg`)
+        await extractFrame(input, path, time, FRAME_WIDTH)
+        return derivative('frame', path, frameSize, time)
+      })
+    )
 
+    // The poster is the first frame; the thumbnail is scaled from it rather than the video.
     const posterTime = times[0] ?? 0
     const poster = join(dir, 'poster.jpg')
     const thumb = join(dir, 'thumb.jpg')
-    await extractFrame(input, poster, posterTime, FRAME_WIDTH)
-    await extractFrame(input, thumb, posterTime, THUMB_WIDTH)
-    derivatives.push(
-      derivative('poster', poster, scaled(meta.width, meta.height, FRAME_WIDTH), posterTime),
-      derivative('thumb', thumb, scaled(meta.width, meta.height, THUMB_WIDTH), posterTime)
-    )
+    await copyFile(join(dir, 'frame-1.jpg'), poster)
+    await extractFrame(poster, thumb, null, THUMB_WIDTH)
+    const derivatives: NewDerivative[] = [
+      ...frames,
+      derivative('poster', poster, frameSize, posterTime),
+      derivative('thumb', thumb, scaled(meta.width, meta.height, THUMB_WIDTH), posterTime),
+    ]
 
     assets.replaceDerivatives(row.id, derivatives)
   }

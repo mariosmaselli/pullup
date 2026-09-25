@@ -16,6 +16,8 @@ Internal tool for one person, running locally on one Mac. Decisions below were a
 | AI | Thin provider interface, Anthropic first; one module per task | Swappable provider, versioned prompts, structured output, every call logged |
 | Styling | Tailwind = layout only; co-located SCSS per component | Same doctrine as the stellar template |
 | Backup | The user's machine (Time Machine etc.) | Accepted trade-off of local-first |
+| API key | Pasted in Settings → verified via the Models API → saved to `pullup/.env` (0600); hot-swapped, never returned to the browser | No restarts, no copying keys around |
+| Local security | Host + Origin guard on `/api`, no CORS, sandbox CSP on library files, raster-only link images | Other sites/tabs can't read or change local data |
 
 Not doing: hosted database, auth, cloud storage, deploys, autonomous agents, direct social publishing.
 

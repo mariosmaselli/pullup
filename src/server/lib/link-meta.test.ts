@@ -32,3 +32,25 @@ describe('parseLinkMeta', () => {
     expect(meta.icon).toBe('https://site.dev/favicon.ico')
   })
 })
+
+describe('downloadImage', () => {
+  it('accepts raster images only — never SVG or HTML', async () => {
+    const { downloadImage } = await import('./link-meta.ts')
+    const realFetch = globalThis.fetch
+    const serve = (type: string) =>
+      (async () =>
+        new Response('<svg><script>alert(1)</script></svg>', {
+          headers: { 'content-type': type },
+        })) as typeof fetch
+    try {
+      globalThis.fetch = serve('image/svg+xml')
+      expect(await downloadImage('https://example.com/a.svg')).toBeNull()
+      globalThis.fetch = serve('image/html')
+      expect(await downloadImage('https://example.com/a')).toBeNull()
+      globalThis.fetch = serve('image/png; charset=binary')
+      expect((await downloadImage('https://example.com/a.png'))?.ext).toBe('png')
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+})
