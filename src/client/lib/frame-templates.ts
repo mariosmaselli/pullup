@@ -43,9 +43,15 @@ export function frameInputs(
   meta: TemplateMeta,
   media: MediaInput[]
 ): TemplateInputs {
+  // The frame's text fills the template's main field. Optional fields start empty: their defaults
+  // are sample copy for the Templates studio ("Echo Labs", "(01)"), and a post must never carry
+  // details Mario didn't write.
   const textKey = Object.keys(meta.text ?? {})[0]
   const text = Object.fromEntries(
-    Object.entries(meta.text ?? {}).map(([key, spec]) => [key, spec.default ?? ''])
+    Object.entries(meta.text ?? {}).map(([key, spec]) => [
+      key,
+      spec.optional ? '' : (spec.default ?? ''),
+    ])
   )
   if (textKey) text[textKey] = frame.text
   const params = Object.fromEntries(
