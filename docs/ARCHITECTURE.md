@@ -121,7 +121,7 @@ preview, claims and questions, revisions.
 | M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow**, run live |
 | M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | ✅ Folded into M9 |
 | M6 | Multi-platform drafts: one idea → X, LinkedIn, IG story frames, IG carousel slides + caption; platform styles in Settings | ✅ Frames/slides carry their own media; editor per platform |
-| M7 | Template engine: WebGL/Three.js/GSAP/canvas templates in a worker, frame-stepped MP4 (WebCodecs + Mediabunny) and JPEG export, video proxies, render checks; Templates studio | ✅ 6 s 1080×1920 WebGL video in ~1 s; Text story matches Mario's reference |
+| M7 | Template engine: WebGL/Three.js/GSAP/canvas templates in a worker, frame-stepped MP4 (WebCodecs + Mediabunny) and JPEG export, video proxies, render checks; Templates studio | ✅ 6 s 1080×1920 WebGL video in ~1 s; Text story matches Mario's reference; 9 templates (stills, text, slideshow, shader transitions, 3D planes, device frames) |
 | M8 | Story/carousel builder: templates per frame/slide in the draft editor, render into the post | ✅ Pick a template per frame, render one/all, download the frames as a zip |
 | M9 | Publishing by hand: calendar, download per platform, mark published + URL | ✅ Approve media → schedule (panel or drag on the calendar) → mark published with the link; posts listed per project |
 | M10 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
