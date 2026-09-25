@@ -76,11 +76,13 @@ export async function probe(path: string): Promise<MediaProbe> {
 }
 
 // Writes one JPEG frame, scaled down to maxWidth. atMs = null for still images.
+// One JPEG frame, at most `maxWidth` wide — or fitted inside maxWidth × maxHeight when given.
 export async function extractFrame(
   input: string,
   output: string,
   atMs: number | null,
-  maxWidth: number
+  maxWidth: number,
+  maxHeight?: number
 ) {
   const seek = atMs === null ? [] : ['-ss', (atMs / 1000).toFixed(3)]
   await run('ffmpeg', [
@@ -94,7 +96,9 @@ export async function extractFrame(
     '-frames:v',
     '1',
     '-vf',
-    `scale='min(${maxWidth},iw)':-2`,
+    maxHeight
+      ? `scale='min(${maxWidth},iw)':'min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`
+      : `scale='min(${maxWidth},iw)':-2`,
     '-q:v',
     '3',
     output,

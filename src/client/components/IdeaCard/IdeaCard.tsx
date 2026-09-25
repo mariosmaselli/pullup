@@ -11,13 +11,14 @@ interface Props {
   idea: Idea
   assets: Map<string, Asset>
   drafting: boolean
+  error?: string | null
   onDraft: (platforms: Platform[]) => void
   onStatus: (status: 'saved' | 'dismissed' | 'suggested') => void
 }
 
 const DEFAULT_PLATFORMS: Platform[] = ['x', 'linkedin', 'ig_story']
 
-export function IdeaCard({ idea, assets, drafting, onDraft, onStatus }: Props) {
+export function IdeaCard({ idea, assets, drafting, error, onDraft, onStatus }: Props) {
   // Start from where the AI thought the idea fits; Mario toggles from there.
   const [platforms, setPlatforms] = useState<Platform[]>(
     idea.platforms.length ? idea.platforms : DEFAULT_PLATFORMS
@@ -103,6 +104,12 @@ export function IdeaCard({ idea, assets, drafting, onDraft, onStatus }: Props) {
             Dismiss
           </Button>
         </div>
+
+        {error ? (
+          <p className="idea-card__error -p1" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       {sources.length ? (

@@ -23,6 +23,10 @@ const statusQuery = z
   .pipe(z.array(z.enum(IDEA_STATUS)))
 
 export function ideaRoutes(ideas: IdeaStore, ai: Ai) {
+  // Ideas whose drafts are being written right now (a call takes minutes; a reload or a second
+  // tab must not start another package for the same idea).
+  const drafting = new Set<string>()
+
   return new Hono()
     .get('/', (c) => c.json(ideas.list(statusQuery.parse(c.req.query('status')))))
 
@@ -44,6 +48,14 @@ export function ideaRoutes(ideas: IdeaStore, ai: Ai) {
       const id = c.req.param('id')
       if (!ideas.exists(id)) return c.json({ error: 'Idea not found' }, 404)
       const input = draftBody.parse(await c.req.json())
-      return c.json(await ai.draftPackage({ ideaId: id, ...input }), 201)
+      if (drafting.has(id)) {
+        return c.json({ error: 'Drafts for this idea are already being written.' }, 409)
+      }
+      drafting.add(id)
+      try {
+        return c.json(await ai.draftPackage({ ideaId: id, ...input }), 201)
+      } finally {
+        drafting.delete(id)
+      }
     })
 }

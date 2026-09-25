@@ -37,6 +37,11 @@ export function DraftView() {
   const { skipped } = useSearch({ from: '/drafts/$id' })
   const { data: post, isLoading } = usePost(id)
   const { data: assets } = useAssets('all')
+  // Held here, above the per-revision remount: saving hand edits before a revise remounts the
+  // editor, and the revise that follows must keep its pending state and error on screen.
+  const save = useSavePostRevision()
+  const revise = useRevisePost()
+  const [instructions, setInstructions] = useState<Record<string, string>>({})
 
   if (isLoading) return null
   if (!post) {
@@ -53,6 +58,10 @@ export function DraftView() {
       post={post}
       assets={assets ?? []}
       skipped={(skipped?.split(',') ?? []).filter((p): p is Platform => p in PLATFORMS)}
+      save={save}
+      revise={revise}
+      instruction={instructions[post.id] ?? ''}
+      onInstruction={(postId, text) => setInstructions((all) => ({ ...all, [postId]: text }))}
     />
   )
 }
@@ -61,14 +70,20 @@ function DraftEditor({
   post,
   assets,
   skipped,
+  save,
+  revise,
+  instruction,
+  onInstruction,
 }: {
   post: PostDetail
   assets: Asset[]
   skipped: Platform[]
+  save: ReturnType<typeof useSavePostRevision>
+  revise: ReturnType<typeof useRevisePost>
+  instruction: string
+  onInstruction: (postId: string, text: string) => void
 }) {
   const navigate = useNavigate()
-  const save = useSavePostRevision()
-  const revise = useRevisePost()
   const restore = useRestoreRevision()
   const update = useUpdatePost()
   const config = PLATFORMS[post.platform]
@@ -77,7 +92,6 @@ function DraftEditor({
   const initialCaption = post.current?.caption ?? ''
   const [segments, setSegments] = useState<Segment[]>(initial)
   const [caption, setCaption] = useState(initialCaption)
-  const [instruction, setInstruction] = useState('')
   const [copied, setCopied] = useState<number | 'all' | null>(null)
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
@@ -90,8 +104,13 @@ function DraftEditor({
 
   const dirty = !sameContent(segments, initial) || caption !== initialCaption
   const overLimit = config.hardLimit && segments.some((s) => config.length(s.text) > config.limit)
-  const busy = revise.isPending || save.isPending
-  const error = (revise.error ?? save.error ?? update.error ?? restore.error) as ApiError | null
+  // save/revise outlive this editor and its siblings' editors: only this post's calls count.
+  const revising = revise.isPending && revise.variables?.id === post.id
+  const busy = revising || (save.isPending && save.variables?.id === post.id)
+  const error = ((revise.variables?.id === post.id ? revise.error : null) ??
+    (save.variables?.id === post.id ? save.error : null) ??
+    update.error ??
+    restore.error) as ApiError | null
   const claims = post.current?.claims ?? []
   const unconfirmed = claims.filter((c) => c.basis === 'unconfirmed')
   // Platforms with more than one draft get their angle in the tab label.
@@ -110,18 +129,22 @@ function DraftEditor({
     setCopied(which)
   }
 
-  const saveEdits = (then?: () => void) =>
+  const saveEdits = (then?: () => void) => {
+    revise.reset()
     save.mutate(
       { id: post.id, segments, caption: config.caption ? caption : null },
       { onSuccess: then }
     )
+  }
 
   const runRevision = (text: string) => {
     if (!text.trim()) return
+    const postId = post.id
+    save.reset()
     const doRevise = () =>
       revise.mutate(
-        { id: post.id, instruction: text.trim() },
-        { onSuccess: () => setInstruction('') }
+        { id: postId, instruction: text.trim() },
+        { onSuccess: () => onInstruction(postId, '') }
       )
     // Save unsaved hand edits first so the AI revises what's on screen.
     if (dirty) saveEdits(doRevise)
@@ -200,29 +223,32 @@ function DraftEditor({
             )}
           </header>
 
-          {config.frames ? (
-            <FramesEditor
-              postId={post.id}
-              platform={post.platform}
-              segments={segments}
-              caption={caption}
-              sources={sources}
-              byId={byId}
-              copied={copied}
-              onChange={setSegments}
-              onCaption={setCaption}
-              onCopy={copy}
-            />
-          ) : (
-            <TextPostEditor
-              platform={post.platform}
-              segments={segments}
-              media={media}
-              copied={copied}
-              onChange={setSegments}
-              onCopy={copy}
-            />
-          )}
+          {/* Locked while the AI rewrites it: anything typed meanwhile would be replaced. */}
+          <fieldset className="draft-view__editor" disabled={busy}>
+            {config.frames ? (
+              <FramesEditor
+                postId={post.id}
+                platform={post.platform}
+                segments={segments}
+                caption={caption}
+                sources={sources}
+                byId={byId}
+                copied={copied}
+                onChange={setSegments}
+                onCaption={setCaption}
+                onCopy={copy}
+              />
+            ) : (
+              <TextPostEditor
+                platform={post.platform}
+                segments={segments}
+                media={media}
+                copied={copied}
+                onChange={setSegments}
+                onCopy={copy}
+              />
+            )}
+          </fieldset>
 
           <div className="draft-view__edit-actions flex items-center justify-end">
             {dirty ? (
@@ -286,7 +312,7 @@ function DraftEditor({
                 className="flex-1 -p"
                 value={instruction}
                 placeholder="Or say what to change — e.g. focus on the animation, not the design"
-                onChange={(e) => setInstruction(e.target.value)}
+                onChange={(e) => onInstruction(post.id, e.target.value)}
                 disabled={busy}
               />
               <Button
@@ -295,7 +321,7 @@ function DraftEditor({
                 type="submit"
                 disabled={busy || !instruction.trim()}
               >
-                {revise.isPending ? 'Revising…' : 'Revise'}
+                {revising ? 'Revising…' : 'Revise'}
               </Button>
             </form>
           </div>

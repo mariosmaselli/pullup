@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { config } from './config.ts'
@@ -223,8 +223,13 @@ describe('ai', () => {
     expect(profile.slug).toBe('mario')
     const idea = ideas.find((i) => i.angle === 'technical')!
     // No profile or platforms needed: written as Mario for X, LinkedIn and an IG story.
-    const res = await app.request(`/api/ideas/${idea.id}/draft`, json({}))
+    // A second click while the first package is being written is turned away.
+    const [res, again] = await Promise.all([
+      app.request(`/api/ideas/${idea.id}/draft`, json({})),
+      app.request(`/api/ideas/${idea.id}/draft`, json({})),
+    ])
     expect(res.status).toBe(201)
+    expect(again.status).toBe(409)
     const { postIds } = (await res.json()) as { postIds: string[] }
     expect(postIds).toHaveLength(3)
     draftId = postIds[0]!
@@ -425,6 +430,56 @@ describe('ai', () => {
 
     const empty = await app.request('/api/profiles/current', json({ voiceGuide: '  ' }, 'PATCH'))
     expect(empty.status).toBe(400)
+  })
+
+  it('sends every image in a form the API accepts', async () => {
+    const upload = async (name: string, lavfi: string, contentType: string) => {
+      const file = join(library.root, `fixture-${name}`)
+      execFileSync(
+        'ffmpeg',
+        ['-v', 'error', '-y', '-f', 'lavfi', '-i', lavfi, '-frames:v', '1'].concat(
+          name.endsWith('.jpg') ? ['-f', 'image2', '-c:v', 'png', file] : [file]
+        )
+      )
+      const res = await app.request('/api/assets/upload', {
+        method: 'POST',
+        body: new Uint8Array(readFileSync(file)),
+        headers: { 'Content-Type': contentType, 'X-File-Name': name },
+      })
+      const id = ((await res.json()) as CaptureResult).asset.id
+      await processor.idle()
+      await app.request(`/api/assets/${id}/analyze`, { method: 'POST' })
+      const image = calls.at(-1)!.content.find((c) => c.type === 'image')
+      if (image?.type !== 'image') throw new Error('no image sent')
+      return image
+    }
+
+    // A full-page screenshot: over the API's 8000 px limit if only the width were capped.
+    const tall = await upload('fullpage.png', 'color=c=gray:size=1440x9000', 'image/png')
+    expect(tall.mediaType).toBe('image/jpeg')
+    const sent = join(library.root, 'fixture-sent.jpg')
+    writeFileSync(sent, Buffer.from(tall.data, 'base64'))
+    const [width, height] = execFileSync('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'v',
+      '-show_entries',
+      'stream=width,height',
+      '-of',
+      'csv=p=0',
+      sent,
+    ])
+      .toString()
+      .trim()
+      .split(',')
+      .map(Number)
+    expect(height).toBeLessThanOrEqual(2576)
+    expect(width).toBeLessThanOrEqual(1600)
+
+    // PNG bytes behind a .jpg name: labelled by what the bytes are, not by the extension.
+    const renamed = await upload('hero.jpg', 'color=c=red:size=800x600', 'image/jpeg')
+    expect(renamed.mediaType).toBe('image/png')
   })
 
   it('never sends assets of a project with AI turned off', async () => {

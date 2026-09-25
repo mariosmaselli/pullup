@@ -25,10 +25,23 @@ const toBlock = (c: AiContent): Anthropic.Beta.BetaContentBlockParam =>
     ? { type: 'text', text: c.text }
     : { type: 'image', source: { type: 'base64', media_type: c.mediaType, data: c.data } }
 
-// `options` is for tests (a fake `fetch`); the app only passes the key.
+// An error sent inside an open stream (`event: error`): no HTTP status, never retried by the
+// SDK (its retries only cover the HTTP response), and its message is the raw JSON body.
+const midStream = (err: unknown): err is InstanceType<typeof Anthropic.APIError> =>
+  err instanceof Anthropic.APIError && err.status === undefined && !!err.type
+
+const busy = (err: InstanceType<typeof Anthropic.APIError>) =>
+  err.status === 529 || err.type === 'overloaded_error' || err.type === 'rate_limit_error'
+
+// `options` is for tests (a fake `fetch`, no waiting); the app only passes the key.
 export function createAnthropicProvider(
   apiKey: string,
-  options: Pick<ConstructorParameters<typeof Anthropic>[0] & {}, 'fetch' | 'maxRetries'> = {}
+  {
+    retryDelayMs = 2000,
+    ...options
+  }: Pick<ConstructorParameters<typeof Anthropic>[0] & {}, 'fetch' | 'maxRetries'> & {
+    retryDelayMs?: number
+  } = {}
 ): AiProvider {
   const client = new Anthropic({ apiKey, ...options })
 
@@ -43,18 +56,33 @@ export function createAnthropicProvider(
         // The schema goes out as plain JSON Schema and is parsed here, after the stop reason is
         // checked — if the SDK parsed it, a refusal or a cut-off would surface as a JSON error.
         const format = betaZodOutputFormat(schema)
-        const stream = client.beta.messages.stream({
-          model: MODEL,
-          max_tokens: maxTokens,
-          // Declined requests are re-run on Anthropic's recommended fallback model.
-          betas: ['server-side-fallback-2026-07-01', 'structured-outputs-2025-12-15'],
-          fallbacks: 'default',
-          thinking: { type: 'adaptive' },
-          output_config: { effort, format: { type: 'json_schema', schema: format.schema } },
-          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-          messages: [{ role: 'user', content: content.map(toBlock) }],
-        })
-        const response = await stream.finalMessage()
+        const request = () =>
+          client.beta.messages
+            .stream({
+              model: MODEL,
+              max_tokens: maxTokens,
+              // Declined requests are re-run on Anthropic's recommended fallback model.
+              betas: ['server-side-fallback-2026-07-01', 'structured-outputs-2025-12-15'],
+              fallbacks: 'default',
+              thinking: { type: 'adaptive' },
+              output_config: { effort, format: { type: 'json_schema', schema: format.schema } },
+              system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+              messages: [{ role: 'user', content: content.map(toBlock) }],
+            })
+            .finalMessage()
+
+        // One more try when the API gives up mid-stream (overloaded or a transient server error) —
+        // what the SDK would have done for the same error as an HTTP status.
+        let response: Awaited<ReturnType<typeof request>>
+        try {
+          response = await request()
+        } catch (err) {
+          if (!midStream(err) || (err.type !== 'overloaded_error' && err.type !== 'api_error')) {
+            throw err
+          }
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          response = await request()
+        }
 
         if (response.stop_reason === 'refusal') {
           throw new AiError('The model declined this request.', 422)
@@ -94,6 +122,13 @@ export function createAnthropicProvider(
         }
         if (err instanceof Anthropic.RateLimitError) {
           throw new AiError('Rate limited by the AI provider — try again in a moment.', 503)
+        }
+        if (err instanceof Anthropic.APIError && busy(err)) {
+          throw new AiError('The AI provider is busy right now — try again in a moment.', 503)
+        }
+        if (midStream(err)) {
+          const detail = (err.error as { error?: { message?: string } } | undefined)?.error?.message
+          throw new AiError(`AI provider error: ${detail ?? err.type}`)
         }
         if (err instanceof Anthropic.APIError) {
           throw new AiError(`AI provider error ${err.status ?? ''}: ${err.message}`.trim())

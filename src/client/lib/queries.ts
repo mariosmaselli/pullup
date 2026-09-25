@@ -153,9 +153,13 @@ export function useUpdateIdea() {
   })
 }
 
+// Keyed so the Ideas view can see drafts still being written after it remounts.
+export const DRAFT_IDEA_KEY = ['ideas', 'draft']
+
 export function useDraftIdea() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: DRAFT_IDEA_KEY,
     mutationFn: ({ id, ...body }: { id: string; platforms?: Platform[]; instruction?: string }) =>
       api<{ postIds: string[]; skipped: Platform[] }>(`/ideas/${id}/draft`, {
         method: 'POST',

@@ -53,6 +53,26 @@ function fakeStream(text: string, stopReason = 'end_turn') {
   return { fetch: fetch as typeof globalThis.fetch, sent }
 }
 
+// The first `failures` calls open a stream and then send `event: error` of `type`.
+function failingMidStream(
+  fake: ReturnType<typeof fakeStream>,
+  failures: number,
+  type = 'overloaded_error'
+) {
+  let calls = 0
+  const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+    calls++
+    if (calls > failures) return fake.fetch(url, init)
+    const error = { type: 'error', error: { type, message: 'Overloaded' } }
+    const body = `event: message_start\ndata: ${JSON.stringify({
+      type: 'message_start',
+      message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5', content: [] },
+    })}\n\nevent: error\ndata: ${JSON.stringify(error)}\n\n`
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+  }
+  return { fetch: fetch as typeof globalThis.fetch, calls: () => calls }
+}
+
 const Schema = z.object({ answer: z.string() })
 const request = (maxTokens: number) => ({
   system: 'test',
@@ -122,5 +142,31 @@ describe('anthropic provider', () => {
     const provider = createAnthropicProvider('sk-test', { fetch, maxRetries: 0 })
     const err = await provider.generate(request(16000)).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(AiError)
+  })
+
+  it('retries once when the API is overloaded mid-stream', async () => {
+    const flaky = failingMidStream(fakeStream('{"answer":"ok"}'), 1)
+    const provider = createAnthropicProvider('sk-test', { fetch: flaky.fetch, retryDelayMs: 0 })
+    const result = await provider.generate(request(24000))
+    expect(result.output).toEqual({ answer: 'ok' })
+    expect(flaky.calls()).toBe(2)
+  })
+
+  it('says "busy" (503, no raw JSON) when it stays overloaded', async () => {
+    const flaky = failingMidStream(fakeStream('{"answer":"ok"}'), 5)
+    const provider = createAnthropicProvider('sk-test', { fetch: flaky.fetch, retryDelayMs: 0 })
+    const err = await provider.generate(request(24000)).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(AiError)
+    expect((err as AiError).status).toBe(503)
+    expect((err as AiError).message).not.toContain('{')
+    expect(flaky.calls()).toBe(2)
+  })
+
+  it('does not retry other mid-stream errors and shows their message', async () => {
+    const flaky = failingMidStream(fakeStream('{"answer":"ok"}'), 5, 'invalid_request_error')
+    const provider = createAnthropicProvider('sk-test', { fetch: flaky.fetch, retryDelayMs: 0 })
+    const err = await provider.generate(request(24000)).catch((e: unknown) => e)
+    expect((err as AiError).message).toBe('AI provider error: Overloaded')
+    expect(flaky.calls()).toBe(1)
   })
 })

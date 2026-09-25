@@ -11,9 +11,31 @@ import { AiError, type AiContent } from './provider.ts'
 // Builds what the model sees for a set of assets: a text block per asset (clearly separating
 // Mario's own words from earlier AI output) plus images — originals, video frames, link previews.
 
+// The API rejects images over 8000 px a side and downscales anything over ~2576 px, so every
+// image is fitted inside 1600 × 2576 (a full-page screenshot becomes a tall, narrow strip).
 const AI_IMAGE_WIDTH = 1600
+const AI_IMAGE_MAX_SIDE = 2576
 const MAX_DIRECT_BYTES = 3.5 * 1024 * 1024
-const DIRECT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+type DirectType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
+// The format the bytes actually are — the API checks them against media_type, and a file's
+// extension (hence its stored mime) can lie, e.g. a CDN WebP saved as .jpg.
+function sniffImageType(b: Buffer): DirectType | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length >= 8 && b.readUInt32BE(0) === 0x89504e47 && b.readUInt32BE(4) === 0x0d0a1a0a) {
+    return 'image/png'
+  }
+  if (b.length >= 6 && /^GIF8[79]a$/.test(b.toString('latin1', 0, 6))) return 'image/gif'
+  if (
+    b.length >= 12 &&
+    b.toString('latin1', 0, 4) === 'RIFF' &&
+    b.toString('latin1', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp'
+  }
+  return null
+}
 
 interface ProjectRow {
   id: string
@@ -46,36 +68,34 @@ async function jpegContent(path: string): Promise<AiContent> {
   return { type: 'image', mediaType: 'image/jpeg', data: (await readFile(path)).toString('base64') }
 }
 
-// One image for a still: the original when it's small and in a supported format, else a
-// cached 1600 px JPEG.
+// One image for a still: the original when it's small and really a supported format, else a
+// cached JPEG fitted inside AI_IMAGE_WIDTH × AI_IMAGE_MAX_SIDE.
 async function stillImage(row: AssetRow, derivatives: DerivativeRow[]): Promise<AiContent | null> {
   if (!row.file_path || row.mime === 'image/svg+xml') return null
   const original = fromLibraryPath(row.file_path)
 
-  if (
-    row.mime &&
-    DIRECT_TYPES.has(row.mime) &&
-    (row.width ?? 0) <= 2576 &&
-    (row.height ?? 0) <= 2576
-  ) {
+  if ((row.width ?? 0) <= AI_IMAGE_MAX_SIDE && (row.height ?? 0) <= AI_IMAGE_MAX_SIDE) {
     const { size } = await stat(original)
     if (size <= MAX_DIRECT_BYTES) {
-      return {
-        type: 'image',
-        mediaType: row.mime as 'image/jpeg',
-        data: (await readFile(original)).toString('base64'),
-      }
+      const bytes = await readFile(original)
+      const mediaType = sniffImageType(bytes)
+      if (mediaType) return { type: 'image', mediaType, data: bytes.toString('base64') }
+      // Anything else (HEIC, AVIF, TIFF…) goes through the JPEG below.
     }
   }
 
-  const poster = derivatives.find((d) => d.role === 'poster')
-  if (poster) return jpegContent(fromLibraryPath(poster.file_path))
-
-  const target = join(library.cache, row.id, 'ai.jpg')
+  // Named ai-box.jpg: older ai.jpg files were capped by width only and can be too tall.
+  const target = join(library.cache, row.id, 'ai-box.jpg')
   if (!existsSync(target)) {
-    if (/image\/hei[cf]/.test(row.mime ?? ''))
-      await sipsToJpeg(original, target, AI_IMAGE_WIDTH, row.width)
-    else await extractFrame(original, target, null, AI_IMAGE_WIDTH)
+    // ffmpeg decodes only one tile of a HEIC grid: start from the sips-made poster instead.
+    let source = original
+    if (/image\/hei[cf]/.test(row.mime ?? '')) {
+      const poster = derivatives.find((d) => d.role === 'poster')
+      source = join(library.cache, row.id, 'ai-source.jpg')
+      if (poster) source = fromLibraryPath(poster.file_path)
+      else await sipsToJpeg(original, source, AI_IMAGE_WIDTH, row.width)
+    }
+    await extractFrame(source, target, null, AI_IMAGE_WIDTH, AI_IMAGE_MAX_SIDE)
   }
   return jpegContent(target)
 }

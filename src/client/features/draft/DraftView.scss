@@ -47,6 +47,13 @@
 }
 
 // Editor
+.draft-view__editor {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .draft-view__main {
   gap: 16px;
   min-width: 0;
