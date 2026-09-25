@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useBlocker, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import type { Platform, PostStatus } from '@shared/constants.ts'
 import type { Asset, Claim, PostDetail, Segment } from '@shared/types.ts'
 import { Button } from '../../components/Button/Button.tsx'
@@ -17,6 +17,7 @@ import {
   useSavePostRevision,
   useUpdatePost,
 } from '../../lib/queries.ts'
+import { isDue, useNow } from '../../lib/due.ts'
 import { TextPostEditor } from './TextPostEditor.tsx'
 import { FramesEditor } from './FramesEditor.tsx'
 import { PublishPanel } from './PublishPanel.tsx'
@@ -85,6 +86,7 @@ function DraftEditor({
 }) {
   const navigate = useNavigate()
   const restore = useRestoreRevision()
+  const due = isDue(post, useNow())
   const update = useUpdatePost()
   const config = PLATFORMS[post.platform]
 
@@ -103,6 +105,17 @@ function DraftEditor({
   const privateMedia = shownMedia.filter((a) => a.visibility === 'private')
 
   const dirty = !sameContent(segments, initial) || caption !== initialCaption
+
+  // Unsaved edits live only in this editor: leaving the draft (another platform tab, the sidebar,
+  // a reload) would drop them silently. Discarding the draft is a deliberate exit, so it skips this.
+  const leaving = useRef(false)
+  useBlocker({
+    shouldBlockFn: () =>
+      !leaving.current &&
+      !window.confirm('You have unsaved edits in this draft. Leave without saving?'),
+    enableBeforeUnload: dirty,
+    disabled: !dirty,
+  })
   const overLimit = config.hardLimit && segments.some((s) => config.length(s.text) > config.limit)
   // save/revise outlive this editor and its siblings' editors: only this post's calls count.
   const revising = revise.isPending && revise.variables?.id === post.id
@@ -204,8 +217,8 @@ function DraftEditor({
           <header className="draft-view__header flex items-center justify-between">
             <h1 className="-t2">{config.title(segments)}</h1>
             {post.status === 'scheduled' || post.status === 'published' ? (
-              <span className="draft-view__status -meta" data-status={post.status}>
-                {STATUS_LABEL[post.status]}
+              <span className="draft-view__status -meta" data-status={due ? 'due' : post.status}>
+                {due ? 'Due' : STATUS_LABEL[post.status]}
               </span>
             ) : (
               <Segmented<PostStatus>
@@ -234,6 +247,7 @@ function DraftEditor({
                 sources={sources}
                 byId={byId}
                 copied={copied}
+                dirty={dirty}
                 onChange={setSegments}
                 onCaption={setCaption}
                 onCopy={copy}
@@ -414,7 +428,12 @@ function DraftEditor({
             onClick={() =>
               update.mutate(
                 { id: post.id, status: 'discarded' },
-                { onSuccess: () => navigate({ to: '/drafts' }) }
+                {
+                  onSuccess: () => {
+                    leaving.current = true
+                    navigate({ to: '/drafts' })
+                  },
+                }
               )
             }
           >

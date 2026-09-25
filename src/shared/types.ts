@@ -25,6 +25,20 @@ export interface Profile {
   platformStyles: PlatformStyles
 }
 
+export interface Backup {
+  name: string
+  kind: 'snapshot' | 'migration'
+  createdAt: string
+  sizeBytes: number
+}
+
+export interface BackupStatus {
+  folder: string
+  latest: Backup | null
+  snapshots: number
+  keep: number
+}
+
 export interface SystemInfo {
   version: string
   library: {

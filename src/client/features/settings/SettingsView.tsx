@@ -1,5 +1,6 @@
 import { ViewHeader } from '../../components/ViewHeader/ViewHeader.tsx'
 import { useSystem } from '../../lib/queries.ts'
+import { BackupsPanel } from './BackupsPanel.tsx'
 import { AiKeyForm } from './AiKeyForm.tsx'
 import { VoiceForm } from './VoiceForm.tsx'
 import { PlatformStylesForm } from './PlatformStylesForm.tsx'
@@ -36,6 +37,11 @@ export function SettingsView() {
       <section className="settings-view__section">
         <h2 className="settings-view__heading -meta">Platform styles</h2>
         <PlatformStylesForm />
+      </section>
+
+      <section className="settings-view__section">
+        <h2 className="settings-view__heading -meta">Backups</h2>
+        <BackupsPanel />
       </section>
 
       <section className="settings-view__section">

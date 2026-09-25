@@ -21,6 +21,8 @@ interface Props {
   sources: Asset[]
   byId: Map<string, Asset>
   copied: number | 'all' | null
+  // Unsaved edits: the zip is built from the saved post, so it would be out of date.
+  dirty: boolean
   onChange: (segments: Segment[]) => void
   onCaption: (caption: string) => void
   onCopy: (text: string, which: number | 'all') => void
@@ -44,6 +46,7 @@ export function FramesEditor(props: Props) {
     sources,
     byId,
     copied,
+    dirty,
     onChange,
     onCaption,
     onCopy,
@@ -122,9 +125,12 @@ export function FramesEditor(props: Props) {
           </Button>
           <a
             className="frames-editor__download -p1"
-            aria-disabled={pending.length === segments.length}
+            aria-disabled={dirty || pending.length === segments.length}
+            title={dirty ? 'Save your edits first' : undefined}
             href={
-              pending.length === segments.length ? undefined : `/api/posts/${postId}/frames.zip`
+              dirty || pending.length === segments.length
+                ? undefined
+                : `/api/posts/${postId}/frames.zip`
             }
             download
           >

@@ -27,6 +27,7 @@ import { ideaRoutes } from './routes/ideas.ts'
 import { postRoutes } from './routes/posts.ts'
 import { settingsRoutes } from './routes/settings.ts'
 import { renderRoutes } from './routes/renders.ts'
+import { createBackups } from './services/backups.ts'
 
 const FONT_MIME: Record<string, string> = {
   otf: 'font/otf',
@@ -78,6 +79,7 @@ export function createApp(db: DB, options: AppOptions = {}) {
   const posts = createPostStore(db)
   const renders = createRenderStore(db)
   renders.failStale()
+  const backups = createBackups(db)
   const keys = createKeyManager({
     verify: options.verifyKey ?? verifyWithAnthropic,
     onChange: (apiKey) => ai.setProvider(providerFor(apiKey, options.providerFactory)),
@@ -98,7 +100,7 @@ export function createApp(db: DB, options: AppOptions = {}) {
     .use('/files/media/*', libraryFiles('media'))
     .use('/files/cache/*', libraryFiles('cache'))
     .use('/files/fonts/*', libraryFiles('fonts'))
-    .route('/system', systemRoutes(db, ai, keys))
+    .route('/system', systemRoutes(db, ai, keys, backups))
     .route('/settings', settingsRoutes(keys))
     .route('/renders', renderRoutes(renders))
     .route('/profiles', profileRoutes(db))
@@ -124,5 +126,5 @@ export function createApp(db: DB, options: AppOptions = {}) {
     return c.json({ error: 'Internal error' }, 500)
   })
 
-  return { app, assets, projects, capture, processor, ai, keys }
+  return { app, assets, projects, capture, processor, ai, keys, backups }
 }

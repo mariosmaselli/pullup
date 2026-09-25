@@ -9,6 +9,7 @@ import { config } from './config.ts'
 //   media/renders/  files made by templates (MP4/JPEG) — outputs, not captures
 //   fonts/     font files templates may use (licensed fonts stay out of the code repo)
 //   trash/     originals of deleted assets, until you empty it yourself
+//   backups/   database snapshots: daily, on demand, and before every migration
 //   .tmp/      in-flight uploads
 //   pullup.db  all metadata
 export const library = {
@@ -19,6 +20,7 @@ export const library = {
   renders: join(config.libraryRoot, 'media', 'renders'),
   fonts: join(config.libraryRoot, 'fonts'),
   trash: join(config.libraryRoot, 'trash'),
+  backups: join(config.libraryRoot, 'backups'),
   tmp: join(config.libraryRoot, '.tmp'),
   database: join(config.libraryRoot, 'pullup.db'),
 }
@@ -32,6 +34,7 @@ export function ensureLibrary() {
     library.media,
     library.cache,
     library.trash,
+    library.backups,
     library.tmp,
     library.renders,
     library.fonts,

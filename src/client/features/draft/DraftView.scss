@@ -208,4 +208,9 @@
     color: #fff;
     background: #3aa66a;
   }
+
+  &[data-status='due'] {
+    color: #fff;
+    background: var(--signal);
+  }
 }

@@ -47,6 +47,8 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | Ideas / posts storage | [src/server/services/ideas.ts](src/server/services/ideas.ts), [posts.ts](src/server/services/posts.ts) |
 | Draft editor (shell / X+LinkedIn / Instagram frames) | [src/client/features/draft/](src/client/features/draft) |
 | Post status rules (private media, scheduling, published) | `update()` in [src/server/services/posts.ts](src/server/services/posts.ts) |
+| DB snapshots (daily, Back up now) | [src/server/services/backups.ts](src/server/services/backups.ts) |
+| Due posts (scheduled time passed) | [src/client/lib/due.ts](src/client/lib/due.ts) |
 | Publish panel / calendar | [PublishPanel](src/client/features/draft/PublishPanel.tsx), [src/client/features/calendar/](src/client/features/calendar) |
 | Platform rules (AI) + editor rules (UI) — keep in step | [src/server/ai/prompts/platforms.md](src/server/ai/prompts/platforms.md), [src/client/lib/platforms.ts](src/client/lib/platforms.ts) |
 | Template contract (types + rules) | [src/shared/template.ts](src/shared/template.ts), authoring guide [templates/README.md](templates/README.md) |

@@ -120,9 +120,33 @@
     cursor: pointer;
   }
 
+  &[data-due='true'] {
+    border-color: var(--signal);
+    background: color-mix(in srgb, var(--signal) 6%, var(--bg));
+
+    .calendar-view__chip-head {
+      color: var(--signal);
+    }
+  }
+
   &[data-dragging='true'] {
     opacity: 0.4;
   }
+}
+
+.calendar-view__due {
+  gap: 8px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+
+  .calendar-view__label {
+    color: var(--signal);
+  }
+}
+
+.calendar-view__due-hint {
+  color: var(--muted);
 }
 
 .calendar-view__chip-head {

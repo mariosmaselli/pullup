@@ -6,6 +6,7 @@ import { ViewHeader } from '../../components/ViewHeader/ViewHeader.tsx'
 import type { ApiError } from '../../lib/api.ts'
 import { PLATFORMS } from '../../lib/platforms.ts'
 import { usePosts, useUpdatePost } from '../../lib/queries.ts'
+import { isDue, useNow } from '../../lib/due.ts'
 import './CalendarView.scss'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -65,7 +66,11 @@ export function CalendarView() {
     return map
   }, [posts])
   const ready = posts.filter((p) => p.status === 'approved' && !p.scheduledFor)
-  const today = new Date()
+  const now = useNow()
+  const due = posts
+    .filter((p) => isDue(p, now))
+    .sort((a, b) => Date.parse(a.scheduledFor!) - Date.parse(b.scheduledFor!))
+  const today = new Date(now)
 
   const scheduleOn = (postId: string, day: Date) => {
     const post = posts.find((p) => p.id === postId)
@@ -86,6 +91,7 @@ export function CalendarView() {
         type="button"
         className="calendar-view__chip flex flex-col"
         data-status={post.status}
+        data-due={isDue(post, now)}
         data-dragging={dragging === post.id}
         draggable={draggable}
         onDragStart={(e) => {
@@ -103,7 +109,10 @@ export function CalendarView() {
         <span className="calendar-view__chip-head flex items-center justify-between -meta">
           <span>{PLATFORMS[post.platform].label}</span>
           {at && post.status !== 'approved' ? (
-            <span>{at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span>
+              {isDue(post, now) ? 'Due · ' : ''}
+              {at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </span>
           ) : null}
         </span>
         <span className="calendar-view__chip-text -p1">{snippet(post)}</span>
@@ -129,7 +138,7 @@ export function CalendarView() {
     <>
       <ViewHeader
         title="Calendar"
-        description="Drag approved posts onto a day to schedule them. Published posts stay on the day they went out."
+        description="Plan when approved posts go out: drag them onto a day. Pullup doesn’t post for you yet — when a post is due, it’s flagged here and in the sidebar until you mark it published."
         actions={
           <div className="calendar-view__nav flex items-center">
             <Button
@@ -172,6 +181,15 @@ export function CalendarView() {
             if (post?.status === 'scheduled') update.mutate({ id, scheduledFor: null })
           })}
         >
+          {due.length ? (
+            <div className="calendar-view__due flex flex-col">
+              <span className="calendar-view__label -meta">Due now · {due.length}</span>
+              <p className="calendar-view__due-hint -p1">
+                Post {due.length === 1 ? 'it' : 'them'}, then mark as published with the link.
+              </p>
+              {due.map(chip)}
+            </div>
+          ) : null}
           <span className="calendar-view__label -meta">Ready to schedule · {ready.length}</span>
           {ready.length ? (
             ready.map(chip)

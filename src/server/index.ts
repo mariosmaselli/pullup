@@ -8,7 +8,7 @@ import { watchInbox } from './services/inbox-watcher.ts'
 
 ensureLibrary()
 const db = openDatabase()
-const { app, capture, processor } = createApp(db)
+const { app, capture, processor, backups } = createApp(db)
 
 if (config.isProduction) {
   app.use('/*', serveStatic({ root: './dist' }))
@@ -17,6 +17,7 @@ if (config.isProduction) {
 }
 
 processor.resume()
+const stopBackups = backups.start()
 const watcher = watchInbox(capture)
 
 const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: config.port }, (info) => {
@@ -25,6 +26,7 @@ const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: config.por
 
 const shutdown = () => {
   watcher.close()
+  stopBackups()
   server.close()
   db.close()
   process.exit(0)

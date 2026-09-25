@@ -54,11 +54,10 @@
 }
 
 .publish-panel__done {
-  gap: 6px;
-  color: #3aa66a;
+  gap: 10px;
 
-  .button {
-    align-self: flex-start;
+  > p {
+    color: #3aa66a;
   }
 }
 

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   Asset,
+  BackupStatus,
   Idea,
   PlatformStyles,
   Post,
@@ -22,6 +23,17 @@ import { api } from './api.ts'
 
 export const useSystem = () =>
   useQuery({ queryKey: ['system'], queryFn: () => api<SystemInfo>('/system') })
+
+export const useBackups = () =>
+  useQuery({ queryKey: ['backups'], queryFn: () => api<BackupStatus>('/system/backups') })
+
+export function useBackUpNow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<BackupStatus>('/system/backups', { method: 'POST' }),
+    onSuccess: (status) => queryClient.setQueryData(['backups'], status),
+  })
+}
 
 // The identity drafts are written as — currently always Mario.
 export const useWritingProfile = () =>

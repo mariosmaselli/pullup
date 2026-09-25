@@ -5,6 +5,7 @@ import type { ApiError } from '../../lib/api.ts'
 import { assetTitle, dateTime } from '../../lib/format.ts'
 import { PLATFORMS } from '../../lib/platforms.ts'
 import { useApproveMedia, useUpdatePost } from '../../lib/queries.ts'
+import { isDue, useNow } from '../../lib/due.ts'
 import './PublishPanel.scss'
 
 // "datetime-local" value for a Date, in local time.
@@ -12,6 +13,13 @@ const localInput = (date: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+
+const urlPlaceholder = (platform: PostDetail['platform']) =>
+  platform === 'x'
+    ? 'https://x.com/…/status/…'
+    : platform === 'linkedin'
+      ? 'https://www.linkedin.com/feed/update/…'
+      : 'https://www.instagram.com/…'
 
 const tomorrowMorning = () => {
   const d = new Date()
@@ -35,8 +43,21 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
     localInput(post.scheduledFor ? new Date(post.scheduledFor) : tomorrowMorning())
   )
   const [url, setUrl] = useState(post.publicUrl ?? '')
+  const now = useNow()
+  const due = isDue(post, now)
+  // When it went out: the recorded date, else — for a due post — its slot, else now.
+  const [publishedWhen, setPublishedWhen] = useState(() =>
+    localInput(
+      new Date(post.publishedAt ?? (due ? post.scheduledFor! : new Date(now).toISOString()))
+    )
+  )
   const error = (update.error ?? approve.error) as ApiError | null
   const published = post.status === 'published'
+  const recorded = {
+    url: post.publicUrl ?? '',
+    when: post.publishedAt ? localInput(new Date(post.publishedAt)) : '',
+  }
+  const edited = published && (url.trim() !== recorded.url || publishedWhen !== recorded.when)
 
   return (
     <section className="publish-panel flex flex-col">
@@ -58,6 +79,15 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
         </div>
       ) : null}
 
+      {due ? (
+        <div className="publish-panel__notice flex flex-col">
+          <p className="-p1">
+            Due since {dateTime(post.scheduledFor!)}. Post it on {config.label}, then paste the link
+            below and mark it published.
+          </p>
+        </div>
+      ) : null}
+
       {published ? (
         <div className="publish-panel__done flex flex-col">
           <p className="-p1">
@@ -71,15 +101,60 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
               </>
             ) : null}
           </p>
-          <Button
-            variant="ghost"
-            size="s"
-            onClick={() =>
-              update.mutate({ id: post.id, status: 'approved', publishedAt: null, publicUrl: null })
-            }
-          >
-            Undo
-          </Button>
+
+          {/* The link and date can be filled in or corrected afterwards. */}
+          <div className="publish-panel__row flex flex-col">
+            <label className="publish-panel__muted -meta" htmlFor={`url-${post.id}`}>
+              Link
+            </label>
+            <input
+              id={`url-${post.id}`}
+              className="publish-panel__input -p1"
+              type="url"
+              placeholder={urlPlaceholder(post.platform)}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <label className="publish-panel__muted -meta" htmlFor={`published-${post.id}`}>
+              Published on
+            </label>
+            <input
+              id={`published-${post.id}`}
+              className="publish-panel__input -p1"
+              type="datetime-local"
+              value={publishedWhen}
+              onChange={(e) => setPublishedWhen(e.target.value)}
+            />
+          </div>
+          <div className="publish-panel__actions flex items-center">
+            <Button
+              size="s"
+              disabled={!edited || !publishedWhen || update.isPending}
+              onClick={() =>
+                update.mutate({
+                  id: post.id,
+                  publicUrl: url.trim() || null,
+                  publishedAt: new Date(publishedWhen).toISOString(),
+                })
+              }
+            >
+              Save
+            </Button>
+            <Button
+              variant="ghost"
+              size="s"
+              onClick={() =>
+                update.mutate({
+                  id: post.id,
+                  status: 'approved',
+                  publishedAt: null,
+                  publicUrl: null,
+                })
+              }
+            >
+              Undo publish
+            </Button>
+          </div>
         </div>
       ) : (
         <>
@@ -130,22 +205,31 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
               id={`url-${post.id}`}
               className="publish-panel__input -p1"
               type="url"
-              placeholder={
-                post.platform === 'x'
-                  ? 'https://x.com/…/status/…'
-                  : post.platform === 'linkedin'
-                    ? 'https://www.linkedin.com/feed/update/…'
-                    : 'https://www.instagram.com/…'
-              }
+              placeholder={urlPlaceholder(post.platform)}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+            />
+            <label className="publish-panel__muted -meta" htmlFor={`published-${post.id}`}>
+              Published on
+            </label>
+            <input
+              id={`published-${post.id}`}
+              className="publish-panel__input -p1"
+              type="datetime-local"
+              value={publishedWhen}
+              onChange={(e) => setPublishedWhen(e.target.value)}
             />
             <Button
               variant="primary"
               size="s"
-              disabled={update.isPending}
+              disabled={update.isPending || !publishedWhen}
               onClick={() =>
-                update.mutate({ id: post.id, status: 'published', publicUrl: url.trim() || null })
+                update.mutate({
+                  id: post.id,
+                  status: 'published',
+                  publicUrl: url.trim() || null,
+                  publishedAt: new Date(publishedWhen).toISOString(),
+                })
               }
             >
               Mark as published

@@ -15,7 +15,7 @@ Internal tool for one person, running locally on one Mac. Decisions below were a
 | Video | Local `ffmpeg` for posters, frames, metadata | Handles every codec; frames are what AI analysis reads |
 | AI | Thin provider interface, Anthropic first; one module per task | Swappable provider, versioned prompts, structured output, every call logged |
 | Styling | Tailwind = layout only; co-located SCSS per component | Same doctrine as the stellar template |
-| Backup | The user's machine (Time Machine etc.) | Accepted trade-off of local-first |
+| Backup | Daily + on-demand `VACUUM INTO` snapshots of the DB in `<library>/backups` (14 kept, plus one before every migration); the library folder itself via the user's machine (Time Machine etc.) | Accepted trade-off of local-first |
 | Identity | One identity for now: Mario. Profiles table kept; editable "Writing voice" in Settings | Decided 2026-09-25. Profiles return later as connected accounts (X, Instagram, maybe LinkedIn) when direct posting is built |
 | API key | Pasted in Settings → verified via the Models API → saved to `pullup/.env` (0600); hot-swapped, never returned to the browser | No restarts, no copying keys around |
 | Local security | Host + Origin guard on `/api`, no CORS, sandbox CSP on library files, raster-only link images | Other sites/tabs can't read or change local data |

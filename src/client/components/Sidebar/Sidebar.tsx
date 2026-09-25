@@ -1,10 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import type { SystemInfo } from '@shared/types.ts'
 import { useSystem } from '../../lib/queries.ts'
+import { useDuePosts } from '../../lib/due.ts'
 import { useCapture } from '../../lib/capture.tsx'
 import './Sidebar.scss'
 
-type CountKey = keyof SystemInfo['counts']
+type CountKey = keyof SystemInfo['counts'] | 'due'
 
 const NAV: { to: string; label: string; count?: CountKey }[] = [
   { to: '/inbox', label: 'Inbox', count: 'inbox' },
@@ -13,12 +14,13 @@ const NAV: { to: string; label: string; count?: CountKey }[] = [
   { to: '/ideas', label: 'Ideas', count: 'ideas' },
   { to: '/drafts', label: 'Drafts', count: 'posts' },
   { to: '/templates', label: 'Templates' },
-  { to: '/calendar', label: 'Calendar' },
+  { to: '/calendar', label: 'Calendar', count: 'due' }, // posts due now
 ]
 
 export function Sidebar() {
   const { data: system } = useSystem()
   const { setQuickCaptureOpen } = useCapture()
+  const due = useDuePosts()
 
   return (
     <aside className="sidebar flex flex-col shrink-0">
@@ -35,7 +37,8 @@ export function Sidebar() {
 
       <nav className="sidebar__nav flex flex-col">
         {NAV.map((item) => {
-          const count = item.count ? system?.counts[item.count] : undefined
+          const count =
+            item.count === 'due' ? due.length : item.count ? system?.counts[item.count] : undefined
           return (
             <Link
               key={item.to}
@@ -44,7 +47,18 @@ export function Sidebar() {
               activeProps={{ className: 'is-active' }}
             >
               <span>{item.label}</span>
-              {count ? <span className="sidebar__count -meta">{count}</span> : null}
+              {count ? (
+                <span
+                  className="sidebar__count -meta"
+                  title={
+                    item.count === 'due'
+                      ? `${count} scheduled post${count === 1 ? '' : 's'} due`
+                      : undefined
+                  }
+                >
+                  {count}
+                </span>
+              ) : null}
             </Link>
           )
         })}
