@@ -8,6 +8,8 @@ import {
   type AssetPatch,
 } from '../../lib/queries.ts'
 import { Button } from '../Button/Button.tsx'
+import { ProjectPicker } from '../ProjectPicker/ProjectPicker.tsx'
+import { Segmented } from '../Segmented/Segmented.tsx'
 import './AssetPanel.scss'
 
 const SOURCE_LABEL: Record<Asset['source'], string> = {
@@ -197,6 +199,22 @@ export function AssetPanel({ asset, onClose }: Props) {
         ) : null}
 
         <div className="asset-panel__fields flex flex-col">
+          <div className="asset-panel__field flex flex-col">
+            <span className="asset-panel__label -meta">Project</span>
+            <ProjectPicker value={asset.projectId} onChange={(projectId) => save({ projectId })} />
+          </div>
+          <div className="asset-panel__field flex flex-col">
+            <span className="asset-panel__label -meta">Visibility</span>
+            <Segmented
+              label="Visibility"
+              value={asset.visibility}
+              options={[
+                { value: 'private', label: 'Private' },
+                { value: 'approved', label: 'Approved for public' },
+              ]}
+              onChange={(visibility) => save({ visibility })}
+            />
+          </div>
           <Field
             label="Title"
             value={asset.title}

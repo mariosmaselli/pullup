@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { Asset, CaptureResult } from '@shared/types.ts'
+import type { Asset, CaptureResult, Project } from '@shared/types.ts'
 import { ensureLibrary, fromLibraryPath, library } from './library.ts'
 import { openDatabase } from './db/index.ts'
 import { createApp } from './app.ts'
@@ -157,5 +157,55 @@ describe('capture', () => {
     expect(existsSync(original)).toBe(false)
     expect(readdirSync(library.trash).some((f) => f.startsWith('screen-recording-'))).toBe(true)
     expect(existsSync(join(library.cache, asset.id))).toBe(false)
+  })
+})
+
+describe('projects', () => {
+  const json = (body: unknown, method = 'POST') => ({ method, body: JSON.stringify(body) })
+
+  it('keeps AI off by default for client work', async () => {
+    const own = (await (
+      await app.request('/api/projects', json({ name: 'Tallinn 3D' }))
+    ).json()) as Project
+    const client = (await (
+      await app.request('/api/projects', json({ name: 'Client Site', isClientWork: true }))
+    ).json()) as Project
+    expect(own).toMatchObject({ slug: 'tallinn-3d', aiAllowed: true, isClientWork: false })
+    expect(client).toMatchObject({ slug: 'client-site', aiAllowed: false, isClientWork: true })
+
+    const dupe = (await (
+      await app.request('/api/projects', json({ name: 'Tallinn 3D' }))
+    ).json()) as Project
+    expect(dupe.slug).toBe('tallinn-3d-2')
+  })
+
+  it('assigns assets and filters by project', async () => {
+    const [project] = (await (await app.request('/api/projects')).json()) as Project[]
+    const note = (await (
+      await app.request('/api/assets/note', json({ body: 'Fog pass notes' }))
+    ).json()) as CaptureResult
+
+    const patched = await app.request(
+      `/api/assets/${note.asset.id}`,
+      json({ projectId: project!.id, visibility: 'approved' }, 'PATCH')
+    )
+    expect(((await patched.json()) as Asset).projectId).toBe(project!.id)
+
+    const inProject = (await (
+      await app.request(`/api/assets?project=${project!.id}`)
+    ).json()) as Asset[]
+    expect(inProject.map((a) => a.id)).toEqual([note.asset.id])
+    expect(inProject[0]!.visibility).toBe('approved')
+
+    const refreshed = (await (
+      await app.request(`/api/projects/${project!.slug}`)
+    ).json()) as Project
+    expect(refreshed.assetCount).toBe(1)
+
+    const bad = await app.request(
+      `/api/assets/${note.asset.id}`,
+      json({ projectId: 'nope' }, 'PATCH')
+    )
+    expect(bad.status).toBe(400)
   })
 })

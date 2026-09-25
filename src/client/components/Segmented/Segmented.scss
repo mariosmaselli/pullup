@@ -1,0 +1,26 @@
+.segmented {
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--radius-m);
+  background: var(--surface-muted);
+}
+
+.segmented__option {
+  padding: 5px 8px;
+  border-radius: calc(var(--radius-m) - 3px);
+  color: var(--muted);
+  white-space: nowrap;
+  transition:
+    color var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+
+  &:hover {
+    color: var(--ink);
+  }
+
+  &[aria-checked='true'] {
+    color: var(--ink);
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  }
+}

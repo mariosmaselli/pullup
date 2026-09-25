@@ -1,0 +1,29 @@
+.projects-view__form {
+  gap: 10px;
+  margin-bottom: 32px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.projects-view__input {
+  min-width: 0;
+  outline: none;
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.projects-view__check {
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.projects-view__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 32px 24px;
+}

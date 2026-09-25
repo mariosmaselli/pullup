@@ -8,10 +8,12 @@ import { mimeFromName } from './lib/files.ts'
 import { createAssetStore } from './services/assets.ts'
 import { CaptureError, createCapture } from './services/capture.ts'
 import { createProcessor } from './services/processing.ts'
+import { createProjectStore } from './services/projects.ts'
 import { systemRoutes } from './routes/system.ts'
 import { profileRoutes } from './routes/profiles.ts'
 import { assetRoutes } from './routes/assets.ts'
 import { eventRoutes } from './routes/events.ts'
+import { projectRoutes } from './routes/projects.ts'
 
 // Serves one library subfolder (media/ or cache/). Nothing else in the library is reachable —
 // serveStatic also rejects `..` and dot segments.
@@ -34,6 +36,7 @@ const libraryFiles = (folder: 'media' | 'cache'): MiddlewareHandler => {
 
 export function createApp(db: DB) {
   const assets = createAssetStore(db)
+  const projects = createProjectStore(db)
   const processor = createProcessor(assets)
   const capture = createCapture(assets, processor)
 
@@ -42,7 +45,8 @@ export function createApp(db: DB) {
     .use('/files/cache/*', libraryFiles('cache'))
     .route('/system', systemRoutes(db))
     .route('/profiles', profileRoutes(db))
-    .route('/assets', assetRoutes({ assets, capture, processor }))
+    .route('/assets', assetRoutes({ assets, projects, capture, processor }))
+    .route('/projects', projectRoutes(projects))
     .route('/events', eventRoutes())
     .all('*', (c) => c.json({ error: 'Not found' }, 404))
 
@@ -57,5 +61,5 @@ export function createApp(db: DB) {
     return c.json({ error: 'Internal error' }, 500)
   })
 
-  return { app, assets, capture, processor }
+  return { app, assets, projects, capture, processor }
 }

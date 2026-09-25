@@ -1,0 +1,45 @@
+.project-picker__select,
+.project-picker__input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  outline: none;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.project-picker__select {
+  appearance: none;
+  padding-right: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 55%,
+    calc(100% - 11px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.project-picker__new {
+  gap: 8px;
+
+  .button + .button {
+    margin-left: 4px;
+  }
+}
+
+.project-picker__check {
+  gap: 6px;
+  cursor: pointer;
+
+  .-meta {
+    color: var(--muted);
+  }
+}

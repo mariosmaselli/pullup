@@ -1,0 +1,24 @@
+.project-view__back {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--muted);
+
+  &:hover {
+    color: var(--ink);
+  }
+}
+
+.project-view__settings {
+  flex-wrap: wrap;
+  gap: 20px 28px;
+  margin: -8px 0 36px;
+}
+
+.project-view__setting {
+  gap: 6px;
+}
+
+.project-view__label {
+  color: var(--muted);
+  text-transform: uppercase;
+}

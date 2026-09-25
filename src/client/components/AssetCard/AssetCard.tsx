@@ -1,5 +1,6 @@
 import type { Asset } from '@shared/types.ts'
 import { assetTitle, duration, hostname, relativeTime } from '../../lib/format.ts'
+import { useProjects } from '../../lib/queries.ts'
 import './AssetCard.scss'
 
 interface Props {
@@ -34,6 +35,8 @@ function Media({ asset }: { asset: Asset }) {
 }
 
 export function AssetCard({ asset, selected, onSelect }: Props) {
+  const { data: projects } = useProjects()
+  const project = asset.projectId ? projects?.find((p) => p.id === asset.projectId) : undefined
   const status =
     asset.processingStatus === 'failed'
       ? 'Failed'
@@ -61,6 +64,7 @@ export function AssetCard({ asset, selected, onSelect }: Props) {
         <span className="asset-card__title -p1">{assetTitle(asset)}</span>
         <span className="asset-card__detail -meta">
           {status ? <span data-status={asset.processingStatus}>{status} · </span> : null}
+          {project ? <span className="asset-card__project">{project.name} · </span> : null}
           {detail} · {relativeTime(asset.capturedAt)}
         </span>
       </div>

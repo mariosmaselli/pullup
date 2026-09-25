@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell/AppShell.tsx'
 import { InboxView } from './features/inbox/InboxView.tsx'
 import { LibraryView } from './features/library/LibraryView.tsx'
 import { ProjectsView } from './features/projects/ProjectsView.tsx'
+import { ProjectView } from './features/project/ProjectView.tsx'
 import { IdeasView } from './features/ideas/IdeasView.tsx'
 import { DraftsView } from './features/drafts/DraftsView.tsx'
 import { CalendarView } from './features/calendar/CalendarView.tsx'
@@ -33,6 +34,11 @@ const projectsRoute = createRoute({
   path: '/projects',
   component: ProjectsView,
 })
+const projectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$slug',
+  component: ProjectView,
+})
 const ideasRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/ideas',
@@ -59,6 +65,7 @@ const routeTree = rootRoute.addChildren([
   inboxRoute,
   libraryRoute,
   projectsRoute,
+  projectRoute,
   ideasRoute,
   draftsRoute,
   calendarRoute,

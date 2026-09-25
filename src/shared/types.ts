@@ -1,5 +1,11 @@
 // API response shapes shared by server and client.
-import type { AssetKind, AssetSource, ProcessingStatus, Visibility } from './constants.ts'
+import type {
+  AssetKind,
+  AssetSource,
+  ProcessingStatus,
+  ProjectStatus,
+  Visibility,
+} from './constants.ts'
 
 export interface Profile {
   id: string
@@ -24,6 +30,23 @@ export interface SystemInfo {
     ideas: number
     posts: number
   }
+}
+
+export interface Project {
+  id: string
+  name: string
+  slug: string
+  description: string
+  status: ProjectStatus
+  isClientWork: boolean
+  aiAllowed: boolean
+  tags: string[]
+  defaultProfileId: string | null
+  assetCount: number
+  coverAssetId: string | null
+  lastCapturedAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LinkMeta {

@@ -23,8 +23,9 @@ export function useServerEvents() {
     const refresh = () => {
       clearTimeout(batch)
       batch = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['assets'] })
-        queryClient.invalidateQueries({ queryKey: ['system'] })
+        for (const key of ['assets', 'projects', 'system']) {
+          queryClient.invalidateQueries({ queryKey: [key] })
+        }
       }, 250)
     }
 

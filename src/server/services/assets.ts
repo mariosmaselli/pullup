@@ -92,7 +92,10 @@ export function toAsset(row: AssetRow, derivatives: DerivativeRow[]): Asset {
   }
 }
 
-export type AssetScope = 'inbox' | 'all'
+export interface AssetFilter {
+  scope?: 'inbox' | 'all'
+  projectId?: string
+}
 
 export function createAssetStore(db: DB) {
   const derivativesFor = (ids: string[]) => {
@@ -111,13 +114,17 @@ export function createAssetStore(db: DB) {
   }
 
   return {
-    list(scope: AssetScope): Asset[] {
-      const where = scope === 'inbox' ? 'WHERE triaged_at IS NULL' : ''
+    list({ scope = 'all', projectId }: AssetFilter = {}): Asset[] {
+      const conditions = [
+        scope === 'inbox' ? 'triaged_at IS NULL' : null,
+        projectId ? 'project_id = @projectId' : null,
+      ].filter(Boolean)
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
       const rows = db
         .prepare(
           `SELECT * FROM assets ${where} ORDER BY captured_at DESC, created_at DESC LIMIT 1000`
         )
-        .all() as AssetRow[]
+        .all({ projectId: projectId ?? null }) as AssetRow[]
       return hydrate(rows)
     },
 

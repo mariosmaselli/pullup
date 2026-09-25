@@ -6,12 +6,13 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { ASSET_SOURCES } from '@shared/constants.ts'
+import { ASSET_SOURCES, VISIBILITY } from '@shared/constants.ts'
 import { library } from '../library.ts'
 import { MAX_FILE_BYTES } from '../lib/files.ts'
 import { CaptureError, type Capture } from '../services/capture.ts'
 import { now, type AssetStore } from '../services/assets.ts'
 import type { Processor } from '../services/processing.ts'
+import type { ProjectStore } from '../services/projects.ts'
 
 const textSource = z.enum(['url', 'note', 'paste', 'shortcut']).optional()
 
@@ -33,22 +34,25 @@ const patchBody = z.object({
   body: z.string().trim().min(1).max(50_000).optional(),
   notes: z.string().max(20_000).optional(),
   triaged: z.boolean().optional(),
+  projectId: z.string().nullable().optional(),
+  visibility: z.enum(VISIBILITY).optional(),
 })
 
 const uploadSource = z.enum(ASSET_SOURCES).catch('drop')
 
 interface Deps {
   assets: AssetStore
+  projects: ProjectStore
   capture: Capture
   processor: Processor
 }
 
-export function assetRoutes({ assets, capture, processor }: Deps) {
+export function assetRoutes({ assets, projects, capture, processor }: Deps) {
   return (
     new Hono()
       .get('/', (c) => {
         const scope = c.req.query('scope') === 'inbox' ? 'inbox' : 'all'
-        return c.json(assets.list(scope))
+        return c.json(assets.list({ scope, projectId: c.req.query('project') || undefined }))
       })
 
       .get('/:id', (c) => {
@@ -116,13 +120,17 @@ export function assetRoutes({ assets, capture, processor }: Deps) {
       .patch('/:id', async (c) => {
         const id = c.req.param('id')
         if (!assets.row(id)) return c.json({ error: 'Asset not found' }, 404)
-        const { triaged, body, ...fields } = patchBody.parse(await c.req.json())
+        const { triaged, body, projectId, ...fields } = patchBody.parse(await c.req.json())
+        if (projectId && !projects.exists(projectId)) {
+          return c.json({ error: 'Project not found' }, 400)
+        }
         if (body !== undefined && assets.row(id)!.kind !== 'note') {
           return c.json({ error: 'Only notes have a body' }, 400)
         }
         assets.update(id, {
           ...fields,
           ...(body === undefined ? {} : { body }),
+          ...(projectId === undefined ? {} : { project_id: projectId }),
           ...(triaged === undefined ? {} : { triaged_at: triaged ? now() : null }),
         })
         return c.json(assets.get(id))
