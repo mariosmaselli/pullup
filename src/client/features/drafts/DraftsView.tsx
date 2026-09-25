@@ -63,7 +63,7 @@ export function DraftsView() {
         </div>
       ) : (
         <EmptyState title="No drafts here">
-          Pick an idea on the Ideas page and choose “Write X drafts”.
+          Pick an idea on the Ideas page and choose “Write drafts”.
         </EmptyState>
       )}
     </>

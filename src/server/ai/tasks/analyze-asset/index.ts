@@ -9,7 +9,7 @@ import { AiError } from '../../provider.ts'
 
 const prompt = loadPrompt('analyze-asset', 'v1')
 
-const Output = z.object({
+export const Output = z.object({
   description: z.string(),
   subjects: z.array(z.string()),
   suggestedTags: z.array(z.string()),

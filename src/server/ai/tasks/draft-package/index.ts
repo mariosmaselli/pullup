@@ -17,7 +17,7 @@ import type { AssetRow } from '../../../services/assets.ts'
 
 const prompt = loadPrompt('draft-package', 'v1')
 
-const Output = z.object({
+export const Output = z.object({
   x: DraftSchema.nullable(),
   linkedin: DraftSchema.nullable(),
   ig_story: DraftSchema.nullable(),

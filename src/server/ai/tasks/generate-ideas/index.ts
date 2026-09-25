@@ -9,7 +9,7 @@ import { writingProfile } from '../../../services/profiles.ts'
 
 const prompt = loadPrompt('generate-ideas', 'v2')
 
-const Output = z.object({
+export const Output = z.object({
   ideas: z.array(
     z.object({
       title: z.string(),

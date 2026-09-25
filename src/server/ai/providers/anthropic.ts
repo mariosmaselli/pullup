@@ -25,8 +25,12 @@ const toBlock = (c: AiContent): Anthropic.Beta.BetaContentBlockParam =>
     ? { type: 'text', text: c.text }
     : { type: 'image', source: { type: 'base64', media_type: c.mediaType, data: c.data } }
 
-export function createAnthropicProvider(apiKey: string): AiProvider {
-  const client = new Anthropic({ apiKey })
+// `options` is for tests (a fake `fetch`); the app only passes the key.
+export function createAnthropicProvider(
+  apiKey: string,
+  options: Pick<ConstructorParameters<typeof Anthropic>[0] & {}, 'fetch' | 'maxRetries'> = {}
+): AiProvider {
+  const client = new Anthropic({ apiKey, ...options })
 
   return {
     name: 'anthropic',
@@ -34,17 +38,23 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
 
     async generate<T>({ system, content, schema, effort, maxTokens = 16000 }: AiRequest<T>) {
       try {
-        const response = await client.beta.messages.parse({
+        // Always streamed: the SDK refuses non-streaming calls whose max_tokens could run past
+        // 10 minutes (anything above ~21k), and a stream never hits an idle HTTP timeout.
+        // The schema goes out as plain JSON Schema and is parsed here, after the stop reason is
+        // checked — if the SDK parsed it, a refusal or a cut-off would surface as a JSON error.
+        const format = betaZodOutputFormat(schema)
+        const stream = client.beta.messages.stream({
           model: MODEL,
           max_tokens: maxTokens,
           // Declined requests are re-run on Anthropic's recommended fallback model.
-          betas: ['server-side-fallback-2026-07-01'],
+          betas: ['server-side-fallback-2026-07-01', 'structured-outputs-2025-12-15'],
           fallbacks: 'default',
           thinking: { type: 'adaptive' },
-          output_config: { effort, format: betaZodOutputFormat(schema) },
+          output_config: { effort, format: { type: 'json_schema', schema: format.schema } },
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: content.map(toBlock) }],
         })
+        const response = await stream.finalMessage()
 
         if (response.stop_reason === 'refusal') {
           throw new AiError('The model declined this request.', 422)
@@ -52,7 +62,15 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
         if (response.stop_reason === 'max_tokens') {
           throw new AiError('The response was cut off (max tokens).', 502)
         }
-        if (!response.parsed_output) throw new AiError('The response did not match the schema.')
+        const text = response.content
+          .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+          .join('')
+        let output: T
+        try {
+          output = format.parse(text)
+        } catch {
+          throw new AiError('The response did not match the schema.')
+        }
 
         const usage: AiUsage = {
           inputTokens: response.usage.input_tokens,
@@ -61,7 +79,7 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
           cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
         }
         return {
-          output: response.parsed_output as T,
+          output,
           model: response.model,
           usage,
           costUsd: cost(usage),
@@ -79,6 +97,10 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
         }
         if (err instanceof Anthropic.APIError) {
           throw new AiError(`AI provider error ${err.status ?? ''}: ${err.message}`.trim())
+        }
+        // SDK-side failures (stream cut off, output that doesn't parse): readable, not a 500.
+        if (err instanceof Anthropic.AnthropicError) {
+          throw new AiError(`AI request failed: ${err.message}`)
         }
         throw err
       }
