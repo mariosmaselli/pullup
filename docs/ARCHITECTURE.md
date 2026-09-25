@@ -117,13 +117,13 @@ preview, claims and questions, revisions.
 | M0 | Scaffold, SQLite schema + migrations, library folder, app shell | ✅ App runs, all views reachable, Settings reads the library |
 | M1 | Capture: drop, paste, notes, links (OG fetch), inbox-folder watcher, ffmpeg posters/frames, Inbox grid | ✅ Recordings get posters + frames; pasted URLs get previews; inbox folder imports live |
 | M2 | Organize: projects CRUD, assign, tags, visibility, asset side panel | ◐ Projects, assignment, visibility, client-work AI default done; tags + filters later |
-| M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | ✅ Built + tested with a fake provider; live run pending API key |
-| M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow** built; live run pending API key |
-| M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | A post goes draft → published |
+| M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | ✅ Built, tested with a fake provider, run live |
+| M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow**, run live |
+| M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | ✅ Folded into M9 |
 | M6 | Multi-platform drafts: one idea → X, LinkedIn, IG story frames, IG carousel slides + caption; platform styles in Settings | ✅ Frames/slides carry their own media; editor per platform |
 | M7 | Template engine: WebGL/Three.js/GSAP/canvas templates in a worker, frame-stepped MP4 (WebCodecs + Mediabunny) and JPEG export, video proxies, render checks; Templates studio | ✅ 6 s 1080×1920 WebGL video in ~1 s; Text story matches Mario's reference |
-| M8 | Story/carousel builder: templates per frame/slide in the draft editor, render into the post | |
-| M9 | Publishing by hand: calendar, download per platform, mark published + URL | |
+| M8 | Story/carousel builder: templates per frame/slide in the draft editor, render into the post | ✅ Pick a template per frame, render one/all, download the frames as a zip |
+| M9 | Publishing by hand: calendar, download per platform, mark published + URL | ✅ Approve media → schedule (panel or drag on the calendar) → mark published with the link; posts listed per project |
 | M10 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
 | M11 | Discovery + digests: what can I post, unused material, stale projects, weekly digest | Suggestions cite sources, avoid repeats |
 | Later | Connected accounts + direct posting: LinkedIn → X → Instagram (see docs/research/publishing-apis.md) | |
