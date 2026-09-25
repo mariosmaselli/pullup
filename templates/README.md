@@ -19,12 +19,12 @@ GSAP, video texture) first.
 
 ## The lifecycle
 
-| | When | Do |
-|---|---|---|
-| `setup()` | once | Create the renderer / 2D context, load textures (`await ctx.image(i)`), wire video textures (`ctx.video(i)`), load fonts (`ctx.font`), lay out text (`ctx.layoutText`), build GSAP timelines (`ctx.timeline()`), compile shaders. |
-| `update(t, frame)` | every frame | Set uniforms/positions from `t` and from values your timelines tween. Request video frames: `ctx.video(i).seek(localTime)`. |
-| `render()` | every frame | Draw. Synchronous — no `await`. For video textures call `sync()` first (see `_lib/three.ts`). |
-| `dispose()` | once | Free GPU resources. |
+|                    | When        | Do                                                                                                                                                                                                                                |
+| ------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setup()`          | once        | Create the renderer / 2D context, load textures (`await ctx.image(i)`), wire video textures (`ctx.video(i)`), load fonts (`ctx.font`), lay out text (`ctx.layoutText`), build GSAP timelines (`ctx.timeline()`), compile shaders. |
+| `update(t, frame)` | every frame | Set uniforms/positions from `t` and from values your timelines tween. Request video frames: `ctx.video(i).seek(localTime)`.                                                                                                       |
+| `render()`         | every frame | Draw. Synchronous — no `await`. For video textures call `sync()` first (see `_lib/three.ts`).                                                                                                                                     |
+| `dispose()`        | once        | Free GPU resources.                                                                                                                                                                                                               |
 
 ## Rules (they make renders exact and scrubbing correct)
 
