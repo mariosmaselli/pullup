@@ -209,18 +209,24 @@ export async function retagBt709(input: string, output: string) {
   ])
 }
 
+// Proxy size: enough pixels for any crop a 1080×1920 output can ask for — a landscape clip
+// filling a 9:16 story needs ~1920 px of height — so the short side keeps up to 2160 px (the
+// long side up to 3840, what hardware decoders handle). Never scaled up; always even.
+export function proxySize(width: number, height: number) {
+  const factor = Math.min(1, 2160 / Math.min(width, height), 3840 / Math.max(width, height))
+  const even = (n: number) => Math.max(2, Math.round((n * factor) / 2) * 2)
+  return { width: even(width), height: even(height) }
+}
+
 // The template engine's decode source: constant 30 fps, a keyframe every 15 frames and no
-// B-frames (fast, exact seeking), 8-bit 4:2:0 tagged BT.709, long side at most 1920, no audio.
+// B-frames (fast, exact seeking), 8-bit 4:2:0 tagged BT.709, sized by proxySize, no audio.
 export async function makeProxy(
   input: string,
   output: string,
   size: { width: number | null; height: number | null }
 ) {
-  const long = Math.max(size.width ?? 1920, size.height ?? 1920)
-  const factor = Math.min(1, 1920 / long)
-  const even = (n: number) => Math.max(2, Math.round((n * factor) / 2) * 2)
-  const scale =
-    size.width && size.height ? `scale=${even(size.width)}:${even(size.height)}:flags=lanczos,` : ''
+  const target = size.width && size.height ? proxySize(size.width, size.height) : null
+  const scale = target ? `scale=${target.width}:${target.height}:flags=lanczos,` : ''
   await run(
     'ffmpeg',
     [
@@ -255,6 +261,10 @@ export async function makeProxy(
       'bt709',
       '-color_trc',
       'bt709',
+      // The flags above are dropped for untagged sources (ffmpeg keeps the input's "unknown");
+      // write the tags into the stream itself.
+      '-bsf:v',
+      'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
       '-movflags',
       '+faststart',
       output,

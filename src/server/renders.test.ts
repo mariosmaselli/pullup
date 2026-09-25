@@ -9,7 +9,7 @@ import { createApp } from './app.ts'
 
 ensureLibrary()
 const db = openDatabase()
-const { app } = createApp(db)
+const { app, processor } = createApp(db)
 const json = (body: unknown, method = 'POST') => ({ method, body: JSON.stringify(body) })
 
 const inputs = { aspect: '9:16', duration: 4, media: [], text: {}, params: {}, seed: 1 }
@@ -207,5 +207,67 @@ describe('renders', () => {
     const path = fromLibraryPath(render!.url!.replace('/api/files/', ''))
     expect((await app.request(`/api/renders/${render!.id}`, { method: 'DELETE' })).status).toBe(204)
     expect(existsSync(path)).toBe(false)
+  })
+
+  it('decodes video from a tagged, seek-friendly proxy and rebuilds one made under the old size rule', async () => {
+    // Untagged (like the lab's test recordings) and larger than the old 1920 px proxy cap.
+    const file = join(library.root, 'wide-recording.mov')
+    ffmpeg(
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=2400x1350:rate=24:duration=2',
+      '-pix_fmt',
+      'yuv420p',
+      file
+    )
+    const upload = await app.request('/api/assets/upload', {
+      method: 'POST',
+      body: new Uint8Array(readFileSync(file)),
+      headers: { 'Content-Type': 'video/quicktime', 'X-File-Name': 'wide-recording.mov' },
+    })
+    const id = ((await upload.json()) as { asset: { id: string } }).asset.id
+    await processor.idle()
+
+    type Source = { url: string; width: number; height: number }
+    const source = async () =>
+      (await (await app.request(`/api/assets/${id}/render-source`)).json()) as Source
+    const probe = (path: string) =>
+      execFileSync('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'v',
+        '-show_entries',
+        'stream=width,height,r_frame_rate,has_b_frames,color_primaries,color_transfer,color_space',
+        '-of',
+        'csv=p=0',
+        path,
+      ])
+        .toString()
+        .trim()
+    const proxyPath = () =>
+      (
+        db
+          .prepare("SELECT file_path FROM asset_derivatives WHERE asset_id = ? AND role = 'proxy'")
+          .all(id) as { file_path: string }[]
+      ).map((r) => fromLibraryPath(r.file_path))
+
+    // Full resolution kept (a 9:16 crop of it needs the height), BT.709 tags written for real.
+    const first = await source()
+    expect([first.width, first.height]).toEqual([2400, 1350])
+    expect(probe(proxyPath()[0]!)).toBe('2400,1350,0,bt709,bt709,bt709,30/1')
+
+    // Pretend the proxy was made when proxies were capped at 1920 px: it gets rebuilt.
+    db.prepare(
+      "UPDATE asset_derivatives SET width = 1920, height = 1080 WHERE asset_id = ? AND role = 'proxy'"
+    ).run(id)
+    const old = proxyPath()[0]!
+    const rebuilt = await source()
+    expect([rebuilt.width, rebuilt.height]).toEqual([2400, 1350])
+    expect(proxyPath()).toHaveLength(1)
+    expect(existsSync(proxyPath()[0]!)).toBe(true)
+    expect(rebuilt.url).not.toBe(first.url)
+    expect(old).toBe(proxyPath()[0]) // same size → same file name, rewritten in place
   })
 })

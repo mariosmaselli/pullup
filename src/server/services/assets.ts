@@ -247,6 +247,11 @@ export function createAssetStore(db: DB) {
       notify('assets')
     },
 
+    removeDerivative(id: string) {
+      db.prepare('DELETE FROM asset_derivatives WHERE id = ?').run(id)
+      notify('assets')
+    },
+
     idsWithStatus(statuses: ProcessingStatus[]): string[] {
       return (
         db

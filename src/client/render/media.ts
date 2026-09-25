@@ -1,18 +1,25 @@
 import { ALL_FORMATS, Input, UrlSource, VideoSampleSink, type InputVideoTrack } from 'mediabunny'
 import type { MediaInput, VideoLayer } from '@shared/template.ts'
 
-const MAX_IMAGE_SIDE = 2160 // 2× the 1080 design width
+// Enough pixels for any crop of a 1080×1920 output (a landscape image filling a 9:16 story
+// needs ~1920 px of height), bounded so a handful of images fit in GPU memory. Same rule as the
+// video proxies (server/lib/ffmpeg.ts proxySize), with a little more room on the long side.
+const MAX_SHORT_SIDE = 2160
+const MAX_LONG_SIDE = 4096
 
-// Upright (EXIF applied), colour-managed bitmap, capped to 2160 px on the long side.
+// Upright (EXIF applied), colour-managed bitmap, scaled down to MAX_SHORT/LONG_SIDE.
 export async function loadImage(url: string, signal: AbortSignal): Promise<ImageBitmap> {
   const blob = await (await fetch(url, { signal })).blob()
   const full = await createImageBitmap(blob, {
     imageOrientation: 'from-image',
     colorSpaceConversion: 'default',
   })
-  const long = Math.max(full.width, full.height)
-  if (long <= MAX_IMAGE_SIDE) return full
-  const factor = MAX_IMAGE_SIDE / long
+  const factor = Math.min(
+    1,
+    MAX_SHORT_SIDE / Math.min(full.width, full.height),
+    MAX_LONG_SIDE / Math.max(full.width, full.height)
+  )
+  if (factor === 1) return full
   const resized = await createImageBitmap(full, {
     resizeWidth: Math.round(full.width * factor),
     resizeHeight: Math.round(full.height * factor),

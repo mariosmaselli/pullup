@@ -5,6 +5,7 @@ import {
   extractFrame,
   ffmpegVersion,
   makeProxy,
+  proxySize,
   probe,
   sipsSize,
   sipsToJpeg,
@@ -179,9 +180,18 @@ export function createProcessor(assets: AssetStore) {
   const proxyJobs = new Map<string, Promise<DerivativeRow>>()
   let proxyChain: Promise<unknown> = Promise.resolve()
 
+  // A proxy made under an older, smaller size rule is rebuilt (sharper crops, same timing).
+  const outdated = (proxy: DerivativeRow, row: AssetRow | undefined) => {
+    if (!row?.width || !row.height || !proxy.width || !proxy.height) return false
+    return (
+      Math.max(proxy.width, proxy.height) + 2 <
+      Math.max(...Object.values(proxySize(row.width, row.height)))
+    )
+  }
+
   function ensureProxy(assetId: string): Promise<DerivativeRow> {
     const existing = assets.derivativeRows(assetId).find((d) => d.role === 'proxy')
-    if (existing) return Promise.resolve(existing)
+    if (existing && !outdated(existing, assets.row(assetId))) return Promise.resolve(existing)
     const pending = proxyJobs.get(assetId)
     if (pending) return pending
 
@@ -191,12 +201,19 @@ export function createProcessor(assets: AssetStore) {
       if (!ffmpegVersion()) throw new Error('ffmpeg is not installed — brew install ffmpeg')
       const dir = join(library.cache, assetId)
       await mkdir(dir, { recursive: true })
-      const path = join(dir, 'proxy.mp4')
+      // Named by size so a rebuilt proxy never reuses a URL the browser may have cached.
+      const target = row.width && row.height ? proxySize(row.width, row.height) : null
+      const path = join(dir, target ? `proxy-${target.width}x${target.height}.mp4` : 'proxy.mp4')
       await makeProxy(fromLibraryPath(row.file_path), path, {
         width: row.width,
         height: row.height,
       })
       const size = await probe(path)
+      if (existing) {
+        assets.removeDerivative(existing.id)
+        const old = fromLibraryPath(existing.file_path)
+        if (old !== path) await rm(old, { force: true })
+      }
       assets.addDerivative(assetId, derivative('proxy', path, size))
       return assets.derivativeRows(assetId).find((d) => d.role === 'proxy')!
     })
