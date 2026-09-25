@@ -1,0 +1,61 @@
+// Proportions taken from Mario's reference story (1080x1920): ~40px side margin,
+// ~88px type, bottom margin ~160px — expressed in container units so any size matches.
+.frame-preview {
+  position: relative;
+  overflow: hidden;
+  container-type: inline-size;
+  aspect-ratio: 9 / 16;
+  border-radius: var(--radius-m);
+  background: #101010;
+  color: #fff;
+
+  &[data-aspect='4:5'] {
+    aspect-ratio: 4 / 5;
+  }
+
+  &[data-media='true']::after {
+    content: '';
+    position: absolute;
+    inset: 45% 0 0;
+    background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.55));
+  }
+}
+
+.frame-preview__media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.frame-preview__badge {
+  position: absolute;
+  top: 4cqw;
+  right: 4cqw;
+  z-index: 1;
+  padding: 0.6cqw 2cqw;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 4cqw;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.frame-preview__text {
+  position: absolute;
+  right: 3.7cqw;
+  bottom: 8.3cqw;
+  left: 3.7cqw;
+  z-index: 1;
+  font-family: 'PP Neue Montreal', 'Neue Montreal', var(--font-sans);
+  font-size: 8.2cqw;
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+
+  [data-aspect='4:5'] & {
+    font-size: 7cqw;
+  }
+}

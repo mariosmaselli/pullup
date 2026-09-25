@@ -2,6 +2,7 @@ import { ViewHeader } from '../../components/ViewHeader/ViewHeader.tsx'
 import { useSystem } from '../../lib/queries.ts'
 import { AiKeyForm } from './AiKeyForm.tsx'
 import { VoiceForm } from './VoiceForm.tsx'
+import { PlatformStylesForm } from './PlatformStylesForm.tsx'
 import './SettingsView.scss'
 
 export function SettingsView() {
@@ -30,6 +31,11 @@ export function SettingsView() {
       <section className="settings-view__section">
         <h2 className="settings-view__heading -meta">Writing voice</h2>
         <VoiceForm />
+      </section>
+
+      <section className="settings-view__section">
+        <h2 className="settings-view__heading -meta">Platform styles</h2>
+        <PlatformStylesForm />
       </section>
 
       <section className="settings-view__section">

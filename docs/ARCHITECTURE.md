@@ -120,7 +120,7 @@ preview, claims and questions, revisions.
 | M3 | AI analysis: provider, `ai_runs`, analyze from frames, accept/edit suggestions | ✅ Built + tested with a fake provider; live run pending API key |
 | M4 | Ideas + X drafts: angles, sources, claims/questions, revise with instructions, history | ✅ **First end-to-end workflow** built; live run pending API key |
 | M5 | Workflow + calendar: statuses, scheduling, copy/download, mark published + URL | A post goes draft → published |
-| M6 | Instagram: story sequences, carousel outlines, vertical-crop flags, per-profile voice | One recording → X post + story sequence |
+| M6 | Multi-platform drafts: one idea → X, LinkedIn, IG story frames, IG carousel slides + caption; platform styles in Settings | ✅ Frames/slides carry their own media; editor per platform |
 | M7 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
 | M8 | Discovery + digests: what can I post, unused material, stale projects, weekly digest | Suggestions cite sources, avoid repeats |
 

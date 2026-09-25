@@ -10,6 +10,7 @@ export const ANGLE_LABEL: Record<Angle, string> = {
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   x: 'X',
+  linkedin: 'LinkedIn',
   ig_story: 'IG Story',
   ig_feed: 'IG Feed',
 }

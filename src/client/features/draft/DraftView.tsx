@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import type { PostStatus } from '@shared/constants.ts'
-import type { Asset, Claim, PostDetail } from '@shared/types.ts'
+import type { Asset, Claim, PostDetail, Segment } from '@shared/types.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
 import type { ApiError } from '../../lib/api.ts'
 import { assetTitle, relativeTime } from '../../lib/format.ts'
-import { ANGLE_LABEL, STATUS_LABEL, xLength } from '../../lib/labels.ts'
+import { ANGLE_LABEL, STATUS_LABEL } from '../../lib/labels.ts'
+import { PLATFORMS } from '../../lib/platforms.ts'
 import {
   useAssets,
   usePost,
@@ -16,22 +17,19 @@ import {
   useSavePostRevision,
   useUpdatePost,
 } from '../../lib/queries.ts'
+import { TextPostEditor } from './TextPostEditor.tsx'
+import { FramesEditor } from './FramesEditor.tsx'
 import './DraftView.scss'
-
-const X_LIMIT = 280
-const QUICK = [
-  'Shorter',
-  'Less promotional',
-  'More technical',
-  'More conversational',
-  'Make it a thread',
-]
 
 const BASIS_LABEL: Record<Claim['basis'], string> = {
   source: 'From your material',
   framing: 'Framing',
   unconfirmed: 'Confirm before posting',
 }
+
+const sameContent = (a: Segment[], b: Segment[]) =>
+  JSON.stringify(a.map((s) => [s.text, s.assetId ?? null])) ===
+  JSON.stringify(b.map((s) => [s.text, s.assetId ?? null]))
 
 export function DraftView() {
   const { id } = useParams({ from: '/drafts/$id' })
@@ -56,23 +54,33 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
   const revise = useRevisePost()
   const restore = useRestoreRevision()
   const update = useUpdatePost()
+  const config = PLATFORMS[post.platform]
 
   const initial = post.current?.segments ?? [{ text: '' }]
-  const [segments, setSegments] = useState(initial.map((s) => s.text))
+  const initialCaption = post.current?.caption ?? ''
+  const [segments, setSegments] = useState<Segment[]>(initial)
+  const [caption, setCaption] = useState(initialCaption)
   const [instruction, setInstruction] = useState('')
   const [copied, setCopied] = useState<number | 'all' | null>(null)
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
   const sources = post.sourceAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
   const media = post.mediaAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
-  const privateMedia = media.filter((a) => a.visibility === 'private')
+  const shownMedia = config.frames
+    ? segments.map((s) => s.assetId && byId.get(s.assetId)).filter((a): a is Asset => !!a)
+    : media
+  const privateMedia = shownMedia.filter((a) => a.visibility === 'private')
 
-  const dirty = segments.join('\u0000') !== initial.map((s) => s.text).join('\u0000')
-  const overLimit = segments.some((s) => xLength(s) > X_LIMIT)
+  const dirty = !sameContent(segments, initial) || caption !== initialCaption
+  const overLimit = config.hardLimit && segments.some((s) => config.length(s.text) > config.limit)
   const busy = revise.isPending || save.isPending
   const error = (revise.error ?? save.error ?? update.error) as ApiError | null
   const claims = post.current?.claims ?? []
   const unconfirmed = claims.filter((c) => c.basis === 'unconfirmed')
+  // Platforms with more than one draft get their angle in the tab label.
+  const repeated = new Set(
+    post.siblings.map((s) => s.platform).filter((p, i, all) => all.indexOf(p) !== i)
+  )
 
   useEffect(() => {
     if (copied === null) return
@@ -85,6 +93,12 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
     setCopied(which)
   }
 
+  const saveEdits = (then?: () => void) =>
+    save.mutate(
+      { id: post.id, segments, caption: config.caption ? caption : null },
+      { onSuccess: then }
+    )
+
   const runRevision = (text: string) => {
     if (!text.trim()) return
     const doRevise = () =>
@@ -93,11 +107,7 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
         { onSuccess: () => setInstruction('') }
       )
     // Save unsaved hand edits first so the AI revises what's on screen.
-    if (dirty)
-      save.mutate(
-        { id: post.id, segments: segments.map((t) => ({ text: t })) },
-        { onSuccess: doRevise }
-      )
+    if (dirty) saveEdits(doRevise)
     else doRevise()
   }
 
@@ -135,14 +145,16 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
                   className="draft-view__sibling -p1"
                   data-active={s.id === post.id}
                 >
-                  {s.angle ? ANGLE_LABEL[s.angle] : 'Draft'}
+                  {PLATFORMS[s.platform].label}
+                  {repeated.has(s.platform) && s.angle ? ` · ${ANGLE_LABEL[s.angle]}` : ''}
+                  {s.status === 'approved' ? ' ✓' : ''}
                 </Link>
               ))}
             </div>
           ) : null}
 
           <header className="draft-view__header flex items-center justify-between">
-            <h1 className="-t2">X {post.format === 'thread' ? 'thread' : 'post'}</h1>
+            <h1 className="-t2">{config.title(segments)}</h1>
             <Segmented<PostStatus>
               label="Status"
               value={['draft', 'review', 'approved'].includes(post.status) ? post.status : 'draft'}
@@ -155,88 +167,64 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
             />
           </header>
 
-          <div className="draft-view__segments flex flex-col">
-            {segments.map((text, i) => {
-              const length = xLength(text)
-              return (
-                <div key={i} className="draft-view__segment flex flex-col">
-                  <textarea
-                    className="draft-view__textarea -p"
-                    value={text}
-                    rows={Math.max(3, Math.ceil(text.length / 60))}
-                    onChange={(e) =>
-                      setSegments(segments.map((s, j) => (j === i ? e.target.value : s)))
-                    }
-                  />
-                  {i === 0 && media.length ? (
-                    <div className="draft-view__media flex">
-                      {media.map((a) => (
-                        <img key={a.id} src={a.thumbUrl ?? ''} alt="" title={assetTitle(a)} />
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="draft-view__segment-footer flex items-center justify-between">
-                    <span className="-meta" data-over={length > X_LIMIT}>
-                      {segments.length > 1 ? `${i + 1}/${segments.length} · ` : ''}
-                      {length}/{X_LIMIT}
-                    </span>
-                    <div className="flex items-center">
-                      {segments.length > 1 ? (
-                        <Button
-                          variant="ghost"
-                          size="s"
-                          onClick={() => setSegments(segments.filter((_, j) => j !== i))}
-                        >
-                          Remove
-                        </Button>
-                      ) : null}
-                      <Button variant="ghost" size="s" onClick={() => copy(text, i)}>
-                        {copied === i ? 'Copied' : 'Copy'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          {config.frames ? (
+            <FramesEditor
+              platform={post.platform}
+              segments={segments}
+              caption={caption}
+              sources={sources}
+              byId={byId}
+              copied={copied}
+              onChange={setSegments}
+              onCaption={setCaption}
+              onCopy={copy}
+            />
+          ) : (
+            <TextPostEditor
+              platform={post.platform}
+              segments={segments}
+              media={media}
+              copied={copied}
+              onChange={setSegments}
+              onCopy={copy}
+            />
+          )}
 
-          <div className="draft-view__edit-actions flex items-center justify-between">
-            <Button variant="ghost" size="s" onClick={() => setSegments([...segments, ''])}>
-              + Add post to thread
-            </Button>
-            <div className="flex items-center">
-              {dirty ? (
-                <Button
-                  variant="ghost"
-                  size="s"
-                  onClick={() => setSegments(initial.map((s) => s.text))}
-                >
-                  Discard edits
-                </Button>
-              ) : null}
+          <div className="draft-view__edit-actions flex items-center justify-end">
+            {dirty ? (
               <Button
+                variant="ghost"
                 size="s"
-                disabled={!dirty || busy}
-                onClick={() =>
-                  save.mutate({ id: post.id, segments: segments.map((t) => ({ text: t })) })
-                }
+                onClick={() => {
+                  setSegments(initial)
+                  setCaption(initialCaption)
+                }}
               >
-                Save edits
+                Discard edits
               </Button>
-              <Button variant="primary" size="s" onClick={() => copy(segments.join('\n\n'), 'all')}>
-                {copied === 'all' ? 'Copied' : segments.length > 1 ? 'Copy all' : 'Copy text'}
+            ) : null}
+            <Button size="s" disabled={!dirty || busy} onClick={() => saveEdits()}>
+              Save edits
+            </Button>
+            {config.caption ? null : (
+              <Button
+                variant="primary"
+                size="s"
+                onClick={() => copy(config.copyText(segments, caption), 'all')}
+              >
+                {copied === 'all' ? 'Copied' : config.frames ? 'Copy frame texts' : 'Copy text'}
               </Button>
-            </div>
+            )}
           </div>
 
           {overLimit ? (
             <p className="draft-view__warning -p1">
-              A post is over 280 characters — X will reject it.
+              A post is over {config.limit} characters — {config.label} will reject it.
             </p>
           ) : null}
           {privateMedia.length ? (
             <p className="draft-view__warning -p1">
-              Attached media is still marked private. Approve it for public use before posting.
+              Media in this draft is still marked private. Approve it for public use before posting.
             </p>
           ) : null}
           {error ? <p className="draft-view__warning -p1">{error.message}</p> : null}
@@ -245,7 +233,7 @@ function DraftEditor({ post, assets }: { post: PostDetail; assets: Asset[] }) {
           <div className="draft-view__revise flex flex-col">
             <span className="draft-view__label -meta">Revise with AI</span>
             <div className="draft-view__quick flex">
-              {QUICK.map((q) => (
+              {config.quick.map((q) => (
                 <button
                   key={q}
                   type="button"

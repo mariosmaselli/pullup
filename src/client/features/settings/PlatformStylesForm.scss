@@ -1,0 +1,54 @@
+.platform-styles {
+  gap: 12px;
+  max-width: 760px;
+}
+
+.platform-styles__help {
+  max-width: 64ch;
+  color: var(--muted);
+}
+
+.platform-styles__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-styles__field {
+  gap: 6px;
+}
+
+.platform-styles__label {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.platform-styles__input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+
+  &::placeholder {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+}
+
+.platform-styles__saved {
+  margin-right: 8px;
+  color: var(--muted);
+}
+
+.platform-styles__error {
+  color: var(--signal);
+}

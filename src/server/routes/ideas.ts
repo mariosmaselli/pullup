@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { IDEA_STATUS } from '@shared/constants.ts'
+import { IDEA_STATUS, PLATFORMS } from '@shared/constants.ts'
 import type { Ai } from '../ai/index.ts'
 import type { IdeaStore } from '../services/ideas.ts'
 
@@ -11,6 +11,7 @@ const generateBody = z.object({
 })
 
 const draftBody = z.object({
+  platforms: z.array(z.enum(PLATFORMS)).min(1).max(PLATFORMS.length).optional(),
   profileId: z.string().nullable().optional(),
   instruction: z.string().max(2000).optional(),
 })
@@ -43,7 +44,7 @@ export function ideaRoutes(ideas: IdeaStore, ai: Ai) {
       const id = c.req.param('id')
       if (!ideas.exists(id)) return c.json({ error: 'Idea not found' }, 404)
       const input = draftBody.parse(await c.req.json())
-      const postIds = await ai.draftPost({ ideaId: id, ...input })
+      const postIds = await ai.draftPackage({ ideaId: id, ...input })
       return c.json({ postIds }, 201)
     })
 }

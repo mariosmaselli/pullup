@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { POST_STATUS } from '@shared/constants.ts'
+import { POST_STATUS, SEGMENT_KINDS } from '@shared/constants.ts'
 import type { Ai } from '../ai/index.ts'
 import type { PostStore } from '../services/posts.ts'
 
@@ -12,9 +12,16 @@ const statusQuery = z
 
 const revisionBody = z.object({
   segments: z
-    .array(z.object({ text: z.string().max(4000) }))
+    .array(
+      z.object({
+        text: z.string().max(4000),
+        assetId: z.string().nullable().optional(),
+        kind: z.enum(SEGMENT_KINDS).nullable().optional(),
+      })
+    )
     .min(1)
     .max(25),
+  caption: z.string().max(2200).nullable().optional(),
 })
 
 const patchBody = z.object({
@@ -36,8 +43,8 @@ export function postRoutes(posts: PostStore, ai: Ai) {
     .post('/:id/revisions', async (c) => {
       const id = c.req.param('id')
       if (!posts.exists(id)) return c.json({ error: 'Post not found' }, 404)
-      const { segments } = revisionBody.parse(await c.req.json())
-      posts.saveRevision(id, segments)
+      const { segments, caption } = revisionBody.parse(await c.req.json())
+      posts.saveRevision(id, segments, caption)
       return c.json(posts.detail(id), 201)
     })
 

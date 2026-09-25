@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../components/Button/Button.tsx'
 import type { ApiError } from '../../lib/api.ts'
-import { useUpdateVoice, useWritingProfile } from '../../lib/queries.ts'
+import { useUpdateProfile, useWritingProfile } from '../../lib/queries.ts'
 import './VoiceForm.scss'
 
 // How the AI should sound when writing as Mario. Sent with every idea and draft request.
 export function VoiceForm() {
   const { data: profile } = useWritingProfile()
-  const update = useUpdateVoice()
+  const update = useUpdateProfile()
   const [value, setValue] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -29,7 +29,8 @@ export function VoiceForm() {
       className="voice-form flex flex-col"
       onSubmit={(e) => {
         e.preventDefault()
-        if (dirty && value.trim()) update.mutate(value.trim(), { onSuccess: () => setSaved(true) })
+        if (dirty && value.trim())
+          update.mutate({ voiceGuide: value.trim() }, { onSuccess: () => setSaved(true) })
       }}
     >
       <textarea

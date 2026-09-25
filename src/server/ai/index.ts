@@ -5,7 +5,7 @@ import type { AiProvider } from './provider.ts'
 import { createAnthropicProvider, unavailableProvider } from './providers/anthropic.ts'
 import { analyzeAsset } from './tasks/analyze-asset/index.ts'
 import { generateIdeas, type GenerateIdeasInput } from './tasks/generate-ideas/index.ts'
-import { draftPost } from './tasks/draft-post/index.ts'
+import { draftPackage, type DraftPackageInput } from './tasks/draft-package/index.ts'
 import { revisePost } from './tasks/revise-post/index.ts'
 
 export interface AiDeps {
@@ -34,8 +34,7 @@ export function createAi(deps: Omit<AiDeps, 'context'>) {
     },
     analyzeAsset: (assetId: string) => analyzeAsset(full, assetId),
     generateIdeas: (input: GenerateIdeasInput) => generateIdeas(full, input),
-    draftPost: (input: { ideaId: string; profileId?: string | null; instruction?: string }) =>
-      draftPost(full, input),
+    draftPackage: (input: DraftPackageInput) => draftPackage(full, input),
     revisePost: (input: { postId: string; instruction: string }) => revisePost(full, input),
   }
 }

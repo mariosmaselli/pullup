@@ -7,7 +7,7 @@ import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
 import { writingProfile } from '../../../services/profiles.ts'
 
-const prompt = loadPrompt('generate-ideas', 'v1')
+const prompt = loadPrompt('generate-ideas', 'v2')
 
 const Output = z.object({
   ideas: z.array(

@@ -1,29 +1,34 @@
-import { randomUUID } from 'node:crypto'
-import { z } from 'zod'
+import type { Platform } from '@shared/constants.ts'
+import type { Segment } from '@shared/types.ts'
 import type { AiDeps } from '../../index.ts'
-import { loadPrompt } from '../../prompts.ts'
+import { loadPrompt, platformRules } from '../../prompts.ts'
 import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
-import { ClaimSchema } from '../draft-post/index.ts'
+import { DraftSchema } from '../../schemas.ts'
+import { cleanSegments, writeRevision } from '../../../services/posts.ts'
+import { writingProfile } from '../../../services/profiles.ts'
 
-const prompt = loadPrompt('revise-post', 'v1')
-
-const Output = z.object({
-  format: z.enum(['single', 'thread']),
-  segments: z.array(z.object({ text: z.string() })),
-  claims: z.array(ClaimSchema),
-  questions: z.array(z.string()),
-})
+const prompt = loadPrompt('revise-post', 'v2')
 
 interface PostRow {
   id: string
   idea_id: string | null
   profile_id: string
   project_id: string | null
+  platform: Platform
   angle: string | null
   format: string
   current_revision_id: string | null
 }
+
+const describeSegments = (platform: Platform, segments: Segment[]) =>
+  segments
+    .map((s, i) =>
+      platform === 'ig_story' || platform === 'ig_feed'
+        ? `[${i + 1}] (${s.kind ?? 'text'}${s.assetId ? ` asset=${s.assetId}` : ''}) ${s.text}`
+        : `[${i + 1}] ${s.text}`
+    )
+    .join('\n')
 
 export async function revisePost(
   deps: AiDeps,
@@ -34,14 +39,10 @@ export async function revisePost(
     PostRow | undefined
   if (!post) throw new AiError('Post not found', 400)
   const current = db
-    .prepare('SELECT segments FROM post_revisions WHERE id = ?')
-    .get(post.current_revision_id) as { segments: string } | undefined
-  const profile = db
-    .prepare('SELECT name, voice_guide FROM profiles WHERE id = ?')
-    .get(post.profile_id) as {
-    name: string
-    voice_guide: string
-  }
+    .prepare('SELECT segments, caption FROM post_revisions WHERE id = ?')
+    .get(post.current_revision_id) as { segments: string; caption: string | null } | undefined
+  const profile = writingProfile(db, post.profile_id)
+  const styles = JSON.parse(profile.platform_prefs).styles ?? {}
 
   const sourceIds = post.idea_id
     ? (
@@ -55,7 +56,7 @@ export async function revisePost(
         }[]
       ).map((r) => r.asset_id)
   const sources = await context.sources(assets.rows(sourceIds))
-  const segments = current ? (JSON.parse(current.segments) as { text: string }[]) : []
+  const segments = current ? (JSON.parse(current.segments) as Segment[]) : []
 
   const result = await runAi(
     db,
@@ -65,6 +66,7 @@ export async function revisePost(
       promptVersion: prompt.version,
       inputRefs: {
         postId: post.id,
+        platform: post.platform,
         revisionId: post.current_revision_id,
         instruction: input.instruction,
       },
@@ -72,16 +74,18 @@ export async function revisePost(
     {
       system: prompt.system,
       effort: 'high',
-      schema: Output,
+      schema: DraftSchema,
       content: [
         {
           type: 'text',
           text: [
             `Posting as: ${profile.name}. ${profile.voice_guide}`,
             context.describeProject(post.project_id),
-            `Current draft (angle: ${post.angle ?? 'any'}, format: ${post.format}):\n${segments
-              .map((s, i) => `[${i + 1}] ${s.text}`)
-              .join('\n')}`,
+            platformRules([post.platform], styles),
+            `Current draft (platform: ${post.platform}, angle: ${post.angle ?? 'any'}, format: ${post.format}):\n${describeSegments(post.platform, segments)}`,
+            post.platform === 'ig_feed' &&
+              current?.caption &&
+              `Current caption:\n${current.caption}`,
             `Instruction: ${input.instruction}`,
             `The material:\n${sources.text}`,
           ]
@@ -93,30 +97,24 @@ export async function revisePost(
     }
   )
 
-  const validIds = new Set(sourceIds)
-  const revisionId = randomUUID()
-  db.transaction(() => {
-    db.prepare(
-      `INSERT INTO post_revisions (id, post_id, segments, author, instruction, claims, questions, ai_run_id)
-       VALUES (?, ?, ?, 'ai', ?, ?, ?, ?)`
-    ).run(
-      revisionId,
-      post.id,
-      JSON.stringify(result.output.segments),
-      input.instruction,
-      JSON.stringify(
-        result.output.claims.map((c) => ({
-          ...c,
-          assetId: c.assetId && validIds.has(c.assetId) ? c.assetId : null,
-        }))
-      ),
-      JSON.stringify(result.output.questions),
-      result.runId
-    )
-    db.prepare(
-      'UPDATE posts SET current_revision_id = ?, format = ?, updated_at = ? WHERE id = ?'
-    ).run(revisionId, result.output.format, new Date().toISOString(), post.id)
-  })()
+  const allowed = new Set(sourceIds)
+  const out = result.output
+  const revisionId = db.transaction(() =>
+    writeRevision(db, {
+      postId: post.id,
+      platform: post.platform,
+      segments: cleanSegments(db, post.platform, out.segments, allowed),
+      caption: out.caption,
+      author: 'ai',
+      instruction: input.instruction,
+      claims: out.claims.map((c) => ({
+        ...c,
+        assetId: c.assetId && allowed.has(c.assetId) ? c.assetId : null,
+      })),
+      questions: out.questions,
+      aiRunId: result.runId,
+    })
+  )()
   deps.notify()
   return revisionId
 }

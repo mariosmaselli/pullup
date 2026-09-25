@@ -53,9 +53,9 @@ export function IdeasView() {
               assets={byId}
               drafting={draft.isPending && draft.variables?.id === idea.id}
               onStatus={(status) => update.mutate({ id: idea.id, status })}
-              onDraft={() =>
+              onDraft={(platforms) =>
                 draft.mutate(
-                  { id: idea.id },
+                  { id: idea.id, platforms },
                   {
                     onSuccess: ({ postIds }) =>
                       postIds[0] && navigate({ to: '/drafts/$id', params: { id: postIds[0] } }),

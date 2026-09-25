@@ -54,30 +54,62 @@ const outputs: Record<string, () => unknown> = {
       },
     ],
   }),
-  'write X (Twitter) drafts': () => ({
-    drafts: [
-      {
-        angle: 'technical',
-        format: 'single',
-        segments: [{ text: 'Mycelium sim for a hero: the trail follows the cursor.' }],
-        claims: [
-          { text: 'trail follows the cursor', basis: 'source', assetId },
-          { text: 'runs at 60fps', basis: 'unconfirmed', assetId: 'bogus' },
-        ],
-        questions: ['What is the particle count?'],
-      },
-      {
-        angle: 'personal',
-        format: 'single',
-        segments: [{ text: 'Spent the week growing fungi in the browser.' }],
-        claims: [],
-        questions: [],
-      },
-    ],
+  'write drafts for several platforms': () => ({
+    x: {
+      format: 'single',
+      segments: [
+        {
+          text: 'Mycelium sim for a hero: the trail follows the cursor.',
+          assetId: null,
+          kind: null,
+        },
+      ],
+      caption: null,
+      claims: [
+        { text: 'trail follows the cursor', basis: 'source', assetId },
+        { text: 'runs at 60fps', basis: 'unconfirmed', assetId: 'bogus' },
+      ],
+      questions: ['What is the particle count?'],
+    },
+    linkedin: {
+      format: 'single',
+      segments: [
+        {
+          text: 'For a recent hero section I built a mycelium simulation.\n\nIt grows along the cursor.',
+          assetId: assetId,
+          kind: 'video',
+        },
+      ],
+      caption: 'ignored for LinkedIn',
+      claims: [],
+      questions: [],
+    },
+    ig_story: {
+      format: 'story_seq',
+      segments: [
+        { text: 'New hero experiment', assetId: null, kind: 'text' },
+        { text: 'It grows where you move', assetId, kind: 'video' },
+        { text: 'Invented frame', assetId: 'hallucinated-id', kind: 'image' },
+      ],
+      caption: 'stories have no caption',
+      claims: [],
+      questions: [],
+    },
+    ig_feed: {
+      format: 'carousel',
+      segments: [
+        { text: 'Mycelium hero', assetId, kind: 'video' },
+        { text: '', assetId: null, kind: 'text' },
+      ],
+      caption: 'A calm, generative hero for a data company.',
+      claims: [],
+      questions: [],
+    },
   }),
-  'revise an X draft': () => ({
+  'revise a draft': () => ({
     format: 'single',
-    segments: [{ text: 'Shorter: mycelium that follows your cursor.' }],
+    segments: [{ text: 'Shorter: mycelium that follows your cursor.', assetId: null, kind: null }],
+    caption: null,
     claims: [{ text: 'follows your cursor', basis: 'source', assetId }],
     questions: [],
   }),
@@ -186,33 +218,98 @@ describe('ai', () => {
 
   let draftId = ''
 
-  it('drafts X posts with claims, media and sibling angles', async () => {
+  it('drafts one idea for X, LinkedIn and an Instagram story by default', async () => {
     const profile = await get<{ id: string; slug: string }>('/api/profiles/current')
     expect(profile.slug).toBe('mario')
     const idea = ideas.find((i) => i.angle === 'technical')!
-    // No profile needed: drafts are written as Mario.
+    // No profile or platforms needed: written as Mario for X, LinkedIn and an IG story.
     const res = await app.request(`/api/ideas/${idea.id}/draft`, json({}))
     expect(res.status).toBe(201)
     const { postIds } = (await res.json()) as { postIds: string[] }
-    expect(postIds).toHaveLength(2)
+    expect(postIds).toHaveLength(3)
     draftId = postIds[0]!
 
-    const post = await get<PostDetail>(`/api/posts/${draftId}`)
-    expect(post).toMatchObject({
+    const x = await get<PostDetail>(`/api/posts/${draftId}`)
+    expect(x).toMatchObject({
       platform: 'x',
+      format: 'single',
       status: 'draft',
-      angle: 'technical',
       profileId: profile.id,
     })
-    expect(post.mediaAssetIds).toEqual([assetId])
-    expect(post.sourceAssetIds).toEqual([assetId])
-    expect(post.siblings).toHaveLength(2)
-    expect(post.current?.author).toBe('ai')
+    expect(x.mediaAssetIds).toEqual([assetId])
+    expect(x.sourceAssetIds).toEqual([assetId])
+    expect(x.siblings.map((s) => s.platform)).toEqual(['x', 'linkedin', 'ig_story'])
     // Citations of unknown assets are cleared rather than trusted.
-    expect(post.current?.claims.map((c) => c.assetId)).toEqual([assetId, null])
+    expect(x.current?.claims.map((c) => c.assetId)).toEqual([assetId, null])
+    expect(x.current?.segments[0]).toEqual({ text: expect.stringContaining('Mycelium') })
+
+    const linkedin = await get<PostDetail>(`/api/posts/${postIds[1]}`)
+    expect(linkedin).toMatchObject({
+      platform: 'linkedin',
+      format: 'single',
+      mediaAssetIds: [assetId],
+    })
+    expect(linkedin.current?.caption).toBeNull()
+    expect(linkedin.current?.segments[0]).not.toHaveProperty('assetId')
+
+    const story = await get<PostDetail>(`/api/posts/${postIds[2]}`)
+    expect(story).toMatchObject({ platform: 'ig_story', format: 'story_seq' })
+    expect(story.current?.caption).toBeNull()
+    expect(story.current?.segments).toEqual([
+      { text: 'New hero experiment', assetId: null, kind: 'text' },
+      { text: 'It grows where you move', assetId, kind: 'video' },
+      // An asset the AI made up becomes a text frame.
+      { text: 'Invented frame', assetId: null, kind: 'text' },
+    ])
+    expect(story.mediaAssetIds).toEqual([assetId])
+
+    // The request carried only the requested platforms' rules.
+    const text = calls.at(-1)!.content.find((c) => c.type === 'text')
+    const prompt = text && 'text' in text ? text.text : ''
+    expect(prompt).toContain('<platform id="linkedin">')
+    expect(prompt).toContain('<platform id="ig_story">')
+    expect(prompt).not.toContain('<platform id="ig_feed">')
 
     const [updated] = (await (await app.request('/api/ideas?status=drafted')).json()) as Idea[]
     expect(updated?.id).toBe(idea.id)
+  })
+
+  it('writes an Instagram carousel with a caption and Mario’s platform notes', async () => {
+    const notes = 'Always end the caption with the project year.'
+    await app.request(
+      '/api/profiles/current',
+      json({ platformStyles: { ig_feed: notes } }, 'PATCH')
+    )
+    const idea = ideas.find((i) => i.angle === 'business')!
+    const res = await app.request(`/api/ideas/${idea.id}/draft`, json({ platforms: ['ig_feed'] }))
+    const { postIds } = (await res.json()) as { postIds: string[] }
+    expect(postIds).toHaveLength(1)
+    const carousel = await get<PostDetail>(`/api/posts/${postIds[0]}`)
+    expect(carousel).toMatchObject({ platform: 'ig_feed', format: 'carousel' })
+    expect(carousel.current?.caption).toBe('A calm, generative hero for a data company.')
+
+    const text = calls.at(-1)!.content.find((c) => c.type === 'text')
+    expect(text && 'text' in text && text.text).toContain(notes)
+
+    // Manual edits: a frame pointing at a non-visual asset becomes a text slide.
+    const note = (await (
+      await app.request('/api/assets/note', json({ body: 'Not an image' }))
+    ).json()) as CaptureResult
+    const saved = (await (
+      await app.request(
+        `/api/posts/${postIds[0]}/revisions`,
+        json({
+          segments: [
+            { text: 'Cover', assetId, kind: 'video' },
+            { text: 'Oops', assetId: note.asset.id, kind: 'image' },
+          ],
+          caption: 'Edited caption',
+        })
+      )
+    ).json()) as PostDetail
+    expect(saved.current?.segments[1]).toEqual({ text: 'Oops', assetId: null, kind: 'text' })
+    expect(saved.current?.caption).toBe('Edited caption')
+    expect(saved.format).toBe('carousel')
   })
 
   it('keeps manual edits and AI revisions as history', async () => {

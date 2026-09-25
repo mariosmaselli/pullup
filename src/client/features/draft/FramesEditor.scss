@@ -1,0 +1,72 @@
+.frames-editor {
+  gap: 12px;
+}
+
+.frames-editor__frame {
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus-within {
+    border-color: var(--muted);
+  }
+}
+
+.frames-editor__preview {
+  width: 132px;
+}
+
+.frames-editor__fields {
+  gap: 8px;
+  min-width: 0;
+}
+
+.frames-editor__label {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.frames-editor__text {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  resize: vertical;
+  outline: none;
+  line-height: 1.5;
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.frames-editor__media {
+  max-width: 70%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.frames-editor__count {
+  margin-right: 6px;
+  color: var(--muted);
+
+  &[data-over='true'] {
+    color: var(--signal);
+  }
+}
+
+.frames-editor__add {
+  align-self: flex-start;
+}
+
+.frames-editor__caption {
+  gap: 6px;
+  margin-top: 8px;
+}

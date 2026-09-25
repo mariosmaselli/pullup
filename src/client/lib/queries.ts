@@ -1,6 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Asset, Idea, Post, PostDetail, Profile, Project, SystemInfo } from '@shared/types.ts'
-import type { IdeaStatus, PostStatus, ProjectStatus, Visibility } from '@shared/constants.ts'
+import type {
+  Asset,
+  Idea,
+  PlatformStyles,
+  Post,
+  PostDetail,
+  Profile,
+  Project,
+  Segment,
+  SystemInfo,
+} from '@shared/types.ts'
+import type {
+  IdeaStatus,
+  Platform,
+  PostStatus,
+  ProjectStatus,
+  Visibility,
+} from '@shared/constants.ts'
 import { api } from './api.ts'
 
 export const useSystem = () =>
@@ -10,11 +26,11 @@ export const useSystem = () =>
 export const useWritingProfile = () =>
   useQuery({ queryKey: ['profile'], queryFn: () => api<Profile>('/profiles/current') })
 
-export function useUpdateVoice() {
+export function useUpdateProfile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (voiceGuide: string) =>
-      api<Profile>('/profiles/current', { method: 'PATCH', body: JSON.stringify({ voiceGuide }) }),
+    mutationFn: (body: { voiceGuide?: string; platformStyles?: PlatformStyles }) =>
+      api<Profile>('/profiles/current', { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile),
   })
 }
@@ -139,7 +155,7 @@ export function useUpdateIdea() {
 export function useDraftIdea() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; instruction?: string }) =>
+    mutationFn: ({ id, ...body }: { id: string; platforms?: Platform[]; instruction?: string }) =>
       api<{ postIds: string[] }>(`/ideas/${id}/draft`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -172,11 +188,12 @@ function usePostMutation<V>(request: (vars: V) => Promise<PostDetail>) {
 }
 
 export const useSavePostRevision = () =>
-  usePostMutation(({ id, segments }: { id: string; segments: { text: string }[] }) =>
-    api<PostDetail>(`/posts/${id}/revisions`, {
-      method: 'POST',
-      body: JSON.stringify({ segments }),
-    })
+  usePostMutation(
+    ({ id, segments, caption }: { id: string; segments: Segment[]; caption?: string | null }) =>
+      api<PostDetail>(`/posts/${id}/revisions`, {
+        method: 'POST',
+        body: JSON.stringify({ segments, caption }),
+      })
   )
 
 export const useRevisePost = () =>

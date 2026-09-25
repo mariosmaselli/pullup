@@ -80,56 +80,8 @@
   gap: 16px;
 }
 
-.draft-view__segments {
-  gap: 12px;
-}
-
-.draft-view__segment {
-  padding: 14px 16px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-l);
-  background: var(--surface);
-  transition: border-color var(--duration) var(--ease-out);
-
-  &:focus-within {
-    border-color: var(--muted);
-  }
-}
-
-.draft-view__textarea {
-  width: 100%;
-  resize: vertical;
-  outline: none;
-  line-height: 1.55;
-}
-
-.draft-view__media {
-  gap: 6px;
-  margin-top: 8px;
-
-  img {
-    width: 120px;
-    aspect-ratio: 16 / 10;
-    object-fit: cover;
-    border-radius: var(--radius-s);
-  }
-}
-
-.draft-view__segment-footer {
-  margin-top: 6px;
-  color: var(--muted);
-
-  [data-over='true'] {
-    color: var(--signal);
-  }
-}
-
 .draft-view__edit-actions {
-  gap: 8px;
-
-  .button + .button {
-    margin-left: 6px;
-  }
+  gap: 6px;
 }
 
 .draft-view__warning {

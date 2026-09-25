@@ -8,17 +8,21 @@ import type {
   Platform,
   PostFormat,
   PostStatus,
+  SegmentKind,
   ProcessingStatus,
   ProjectStatus,
   Visibility,
 } from './constants.ts'
+
+// Mario's own notes per platform, added to the built-in platform rules when writing.
+export type PlatformStyles = Partial<Record<Platform, string>>
 
 export interface Profile {
   id: string
   slug: string
   name: string
   voiceGuide: string
-  platformPrefs: Record<string, unknown>
+  platformStyles: PlatformStyles
 }
 
 export interface SystemInfo {
@@ -149,9 +153,18 @@ export interface Claim {
   assetId: string | null
 }
 
+// One X post in a thread, the LinkedIn post, an Instagram story frame or carousel slide.
+// Frames and slides can show an asset (assetId) — X and LinkedIn media are attached per post.
+export interface Segment {
+  text: string
+  assetId?: string | null
+  kind?: SegmentKind | null
+}
+
 export interface PostRevision {
   id: string
-  segments: { text: string }[]
+  segments: Segment[]
+  caption: string | null
   author: 'ai' | 'me'
   instruction: string | null
   claims: Claim[]
@@ -180,8 +193,8 @@ export interface Post {
 export interface PostDetail extends Post {
   revisions: PostRevision[]
   sourceAssetIds: string[]
-  // Other drafts generated from the same idea for the same platform.
-  siblings: { id: string; angle: Angle | null; status: PostStatus }[]
+  // Every draft made from the same idea, across platforms.
+  siblings: { id: string; platform: Platform; angle: Angle | null; status: PostStatus }[]
 }
 
 export interface AiRunSummary {

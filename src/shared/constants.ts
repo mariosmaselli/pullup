@@ -12,7 +12,9 @@ export const ANGLES = ['technical', 'personal', 'opinion', 'business', 'educatio
 export const IDEA_ORIGINS = ['discovery', 'manual', 'asset'] as const
 export const IDEA_STATUS = ['suggested', 'saved', 'dismissed', 'drafted'] as const
 
-export const PLATFORMS = ['x', 'ig_story', 'ig_feed'] as const
+export const PLATFORMS = ['x', 'linkedin', 'ig_story', 'ig_feed'] as const
+// What a story frame / carousel slide shows: text only, an image, or a video.
+export const SEGMENT_KINDS = ['text', 'image', 'video'] as const
 export const POST_FORMATS = ['single', 'thread', 'story_seq', 'carousel', 'reel'] as const
 export const POST_STATUS = [
   'draft',
@@ -34,4 +36,5 @@ export type IdeaOrigin = (typeof IDEA_ORIGINS)[number]
 export type IdeaStatus = (typeof IDEA_STATUS)[number]
 export type Platform = (typeof PLATFORMS)[number]
 export type PostFormat = (typeof POST_FORMATS)[number]
+export type SegmentKind = (typeof SEGMENT_KINDS)[number]
 export type PostStatus = (typeof POST_STATUS)[number]

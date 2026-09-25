@@ -43,11 +43,12 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | Client capture (upload queue, paste, drop) | [src/client/lib/capture.tsx](src/client/lib/capture.tsx), [GlobalCapture](src/client/components/GlobalCapture/GlobalCapture.tsx) |
 | AI tasks, prompts, context, provider | [src/server/ai/](src/server/ai) — `index.ts` lists the operations |
 | Ideas / posts storage | [src/server/services/ideas.ts](src/server/services/ideas.ts), [posts.ts](src/server/services/posts.ts) |
-| Draft editor | [src/client/features/draft/DraftView.tsx](src/client/features/draft/DraftView.tsx) |
+| Draft editor (shell / X+LinkedIn / Instagram frames) | [src/client/features/draft/](src/client/features/draft) |
+| Platform rules (AI) + editor rules (UI) — keep in step | [src/server/ai/prompts/platforms.md](src/server/ai/prompts/platforms.md), [src/client/lib/platforms.ts](src/client/lib/platforms.ts) |
 | Env config | [src/server/config.ts](src/server/config.ts), `.env` |
 | Library paths | [src/server/library.ts](src/server/library.ts) |
 | DB + migration runner | [src/server/db/index.ts](src/server/db/index.ts) |
-| Schema (add `NNN_name.sql`, never edit applied ones) | [src/server/db/migrations/](src/server/db/migrations) |
+| Schema (add `NNN_name.sql`, never edit applied ones; a table rebuild starts with `-- migrate:foreign-keys-off`; the DB is backed up to `<library>/backups/` before migrating) | [src/server/db/migrations/](src/server/db/migrations) |
 | Enums shared by DB/API/UI | [src/shared/constants.ts](src/shared/constants.ts) |
 | API types | [src/shared/types.ts](src/shared/types.ts) |
 | Routes | [src/client/router.tsx](src/client/router.tsx) |
