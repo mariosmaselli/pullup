@@ -187,16 +187,23 @@ describe('ai', () => {
   let draftId = ''
 
   it('drafts X posts with claims, media and sibling angles', async () => {
-    const [profile] = await get<{ id: string }[]>('/api/profiles')
+    const profile = await get<{ id: string; slug: string }>('/api/profiles/current')
+    expect(profile.slug).toBe('mario')
     const idea = ideas.find((i) => i.angle === 'technical')!
-    const res = await app.request(`/api/ideas/${idea.id}/draft`, json({ profileId: profile!.id }))
+    // No profile needed: drafts are written as Mario.
+    const res = await app.request(`/api/ideas/${idea.id}/draft`, json({}))
     expect(res.status).toBe(201)
     const { postIds } = (await res.json()) as { postIds: string[] }
     expect(postIds).toHaveLength(2)
     draftId = postIds[0]!
 
     const post = await get<PostDetail>(`/api/posts/${draftId}`)
-    expect(post).toMatchObject({ platform: 'x', status: 'draft', angle: 'technical' })
+    expect(post).toMatchObject({
+      platform: 'x',
+      status: 'draft',
+      angle: 'technical',
+      profileId: profile.id,
+    })
     expect(post.mediaAssetIds).toEqual([assetId])
     expect(post.sourceAssetIds).toEqual([assetId])
     expect(post.siblings).toHaveLength(2)
@@ -229,6 +236,18 @@ describe('ai', () => {
     ).json()) as PostDetail
     expect(post.current?.id).toBe(original.id)
     expect(post.format).toBe('single')
+  })
+
+  it('uses the writing voice from Settings in every request', async () => {
+    const voice = 'Short sentences. Never say "excited". Mention the tools used.'
+    const res = await app.request('/api/profiles/current', json({ voiceGuide: voice }, 'PATCH'))
+    expect(res.status).toBe(200)
+    await app.request('/api/ideas/generate', json({ assetIds: [assetId] }))
+    const text = calls.at(-1)!.content.find((c) => c.type === 'text')
+    expect(text && 'text' in text && text.text).toContain(voice)
+
+    const empty = await app.request('/api/profiles/current', json({ voiceGuide: '  ' }, 'PATCH'))
+    expect(empty.status).toBe(400)
   })
 
   it('never sends assets of a project with AI turned off', async () => {

@@ -34,7 +34,7 @@ export function createAi(deps: Omit<AiDeps, 'context'>) {
     },
     analyzeAsset: (assetId: string) => analyzeAsset(full, assetId),
     generateIdeas: (input: GenerateIdeasInput) => generateIdeas(full, input),
-    draftPost: (input: { ideaId: string; profileId: string; instruction?: string }) =>
+    draftPost: (input: { ideaId: string; profileId?: string | null; instruction?: string }) =>
       draftPost(full, input),
     revisePost: (input: { postId: string; instruction: string }) => revisePost(full, input),
   }

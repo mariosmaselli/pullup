@@ -5,7 +5,6 @@ import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { IdeaCard } from '../../components/IdeaCard/IdeaCard.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
 import type { ApiError } from '../../lib/api.ts'
-import { useWritingProfile } from '../../lib/profile.tsx'
 import { useAssets, useDraftIdea, useIdeas, useUpdateIdea } from '../../lib/queries.ts'
 import './IdeasView.scss'
 
@@ -17,7 +16,6 @@ export function IdeasView() {
   const { data: assets } = useAssets('all')
   const update = useUpdateIdea()
   const draft = useDraftIdea()
-  const profile = useWritingProfile()
   const navigate = useNavigate()
 
   const byId = useMemo(() => new Map((assets ?? []).map((a) => [a.id, a])), [assets])
@@ -26,7 +24,7 @@ export function IdeasView() {
     <>
       <ViewHeader
         title="Ideas"
-        description={`Post concepts from your material, each citing what it's based on. Drafts are written as ${profile?.name ?? 'you'}.`}
+        description="Post concepts from your material, each citing what it's based on."
         actions={
           <Segmented<Filter>
             label="Filter ideas"
@@ -56,9 +54,8 @@ export function IdeasView() {
               drafting={draft.isPending && draft.variables?.id === idea.id}
               onStatus={(status) => update.mutate({ id: idea.id, status })}
               onDraft={() =>
-                profile &&
                 draft.mutate(
-                  { id: idea.id, profileId: profile.id },
+                  { id: idea.id },
                   {
                     onSuccess: ({ postIds }) =>
                       postIds[0] && navigate({ to: '/drafts/$id', params: { id: postIds[0] } }),

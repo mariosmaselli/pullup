@@ -5,6 +5,7 @@ import type { AiDeps } from '../../index.ts'
 import { loadPrompt } from '../../prompts.ts'
 import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
+import { writingProfile } from '../../../services/profiles.ts'
 
 const prompt = loadPrompt('draft-post', 'v1')
 
@@ -50,15 +51,13 @@ function pickMedia(rows: { id: string; kind: string }[]): string[] {
 
 export async function draftPost(
   deps: AiDeps,
-  input: { ideaId: string; profileId: string; instruction?: string }
+  input: { ideaId: string; profileId?: string | null; instruction?: string }
 ): Promise<string[]> {
   const { db, provider, context, assets } = deps
   const idea = db.prepare('SELECT * FROM ideas WHERE id = ?').get(input.ideaId) as
     IdeaRow | undefined
   if (!idea) throw new AiError('Idea not found', 400)
-  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(input.profileId) as
-    { id: string; name: string; voice_guide: string } | undefined
-  if (!profile) throw new AiError('Profile not found', 400)
+  const profile = writingProfile(db, input.profileId)
 
   const sourceIds = (
     db.prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ?').all(idea.id) as {

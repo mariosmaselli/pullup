@@ -11,7 +11,7 @@ const generateBody = z.object({
 })
 
 const draftBody = z.object({
-  profileId: z.string(),
+  profileId: z.string().nullable().optional(),
   instruction: z.string().max(2000).optional(),
 })
 

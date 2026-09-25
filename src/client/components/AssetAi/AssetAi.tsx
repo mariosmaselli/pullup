@@ -2,7 +2,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import type { Asset } from '@shared/types.ts'
 import { ApiError } from '../../lib/api.ts'
 import { relativeTime } from '../../lib/format.ts'
-import { useWritingProfile } from '../../lib/profile.tsx'
 import {
   useAnalyzeAsset,
   useGenerateIdeas,
@@ -20,7 +19,6 @@ export function AssetAi({ asset }: { asset: Asset }) {
   const analyze = useAnalyzeAsset()
   const generate = useGenerateIdeas()
   const update = useUpdateAsset()
-  const profile = useWritingProfile()
   const navigate = useNavigate()
 
   const project = projects?.find((p) => p.id === asset.projectId)
@@ -133,10 +131,7 @@ export function AssetAi({ asset }: { asset: Asset }) {
         variant="primary"
         disabled={busy || !ready}
         onClick={() =>
-          generate.mutate(
-            { assetIds: [asset.id], profileId: profile?.id },
-            { onSuccess: () => navigate({ to: '/ideas' }) }
-          )
+          generate.mutate({ assetIds: [asset.id] }, { onSuccess: () => navigate({ to: '/ideas' }) })
         }
       >
         {generate.isPending ? 'Thinking of ideas…' : 'Get post ideas'}

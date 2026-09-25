@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import type { SystemInfo } from '@shared/types.ts'
 import { useSystem } from '../../lib/queries.ts'
-import { ProfileSwitcher } from '../ProfileSwitcher/ProfileSwitcher.tsx'
 import { useCapture } from '../../lib/capture.tsx'
 import './Sidebar.scss'
 
@@ -23,8 +22,6 @@ export function Sidebar() {
   return (
     <aside className="sidebar flex flex-col shrink-0">
       <div className="sidebar__brand -t2">Pullup</div>
-
-      <ProfileSwitcher />
 
       <button
         type="button"

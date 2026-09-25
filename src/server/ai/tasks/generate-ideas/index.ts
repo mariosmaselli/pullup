@@ -5,6 +5,7 @@ import type { AiDeps } from '../../index.ts'
 import { loadPrompt } from '../../prompts.ts'
 import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
+import { writingProfile } from '../../../services/profiles.ts'
 
 const prompt = loadPrompt('generate-ideas', 'v1')
 
@@ -36,10 +37,7 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
 
   const sources = await context.sources(rows)
   const projectIds = [...new Set(rows.map((r) => r.project_id).filter((id): id is string => !!id))]
-  const profile = input.profileId
-    ? (db.prepare('SELECT name, voice_guide FROM profiles WHERE id = ?').get(input.profileId) as
-        { name: string; voice_guide: string } | undefined)
-    : undefined
+  const profile = writingProfile(db, input.profileId)
 
   // Existing ideas and posts on this material, to avoid repeats.
   const covered = db
@@ -56,7 +54,7 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
     {
       task: 'generate-ideas',
       promptVersion: prompt.version,
-      inputRefs: { assetIds: input.assetIds, profileId: input.profileId ?? null },
+      inputRefs: { assetIds: input.assetIds, profileId: profile.id },
     },
     {
       system: prompt.system,
@@ -66,7 +64,7 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
         {
           type: 'text',
           text: [
-            profile && `Posting as: ${profile.name}. ${profile.voice_guide}`,
+            `Posting as: ${profile.name}. ${profile.voice_guide}`,
             ...projectIds.map((id) => context.describeProject(id)),
             covered.length && `Already covered:\n${covered.map((c) => `- ${c.title}`).join('\n')}`,
             input.instruction && `Mario's direction: ${input.instruction}`,
@@ -107,7 +105,7 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
         platforms: JSON.stringify(idea.platforms),
         rationale: idea.rationale,
         questions: JSON.stringify(idea.questions),
-        profile_id: input.profileId ?? null,
+        profile_id: profile.id,
         project_id: rows.find((r) => sourceIds.includes(r.id))?.project_id ?? null,
         ai_run_id: result.runId,
       })

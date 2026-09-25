@@ -16,6 +16,7 @@ Internal tool for one person, running locally on one Mac. Decisions below were a
 | AI | Thin provider interface, Anthropic first; one module per task | Swappable provider, versioned prompts, structured output, every call logged |
 | Styling | Tailwind = layout only; co-located SCSS per component | Same doctrine as the stellar template |
 | Backup | The user's machine (Time Machine etc.) | Accepted trade-off of local-first |
+| Identity | One identity for now: Mario. Profiles table kept; editable "Writing voice" in Settings | Decided 2026-09-25. Profiles return later as connected accounts (X, Instagram, maybe LinkedIn) when direct posting is built |
 | API key | Pasted in Settings → verified via the Models API → saved to `pullup/.env` (0600); hot-swapped, never returned to the browser | No restarts, no copying keys around |
 | Local security | Host + Origin guard on `/api`, no CORS, sandbox CSP on library files, raster-only link images | Other sites/tabs can't read or change local data |
 
@@ -61,7 +62,8 @@ Schema: [src/server/db/migrations](../src/server/db/migrations). Conventions: uu
 timestamps, 0/1 booleans, JSON TEXT for lists; enum values mirror
 [src/shared/constants.ts](../src/shared/constants.ts).
 
-- **profiles** — identities (Mario, Nonlinear Studio) with voice guide and per-platform preferences.
+- **profiles** — the identity drafts are written as. Only `mario` is used (see `services/profiles.ts`);
+  the seeded `nonlinear` row is dormant until connected accounts exist.
 - **projects** — status, tags, `is_client_work`, `ai_allowed` (off by default for client work).
 - **assets** — image / video / link / note. `project_id NULL` = unassigned. `triaged_at NULL` = in
   the Inbox. `visibility` is `private` until explicitly `approved` for public use. Checksum dedupes.

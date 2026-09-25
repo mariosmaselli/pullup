@@ -5,8 +5,7 @@ import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
 import { relativeTime } from '../../lib/format.ts'
 import { ANGLE_LABEL, PLATFORM_LABEL, STATUS_LABEL } from '../../lib/labels.ts'
-import { usePosts, useProfiles } from '../../lib/queries.ts'
-import { useProfileFilter } from '../../lib/profile.tsx'
+import { usePosts } from '../../lib/queries.ts'
 import './DraftsView.scss'
 
 type Filter = 'draft,review,approved,scheduled' | 'published' | 'archived,discarded'
@@ -14,12 +13,7 @@ type Filter = 'draft,review,approved,scheduled' | 'published' | 'archived,discar
 export function DraftsView() {
   const [filter, setFilter] = useState<Filter>('draft,review,approved,scheduled')
   const { data: posts, isLoading } = usePosts(filter)
-  const { data: profiles } = useProfiles()
-  const { profile } = useProfileFilter()
-
-  const visible = (posts ?? []).filter(
-    (post) => profile === 'all' || profiles?.find((p) => p.id === post.profileId)?.slug === profile
-  )
+  const visible = posts ?? []
 
   return (
     <>

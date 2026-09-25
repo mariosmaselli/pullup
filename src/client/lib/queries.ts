@@ -6,12 +6,18 @@ import { api } from './api.ts'
 export const useSystem = () =>
   useQuery({ queryKey: ['system'], queryFn: () => api<SystemInfo>('/system') })
 
-export const useProfiles = () =>
-  useQuery({
-    queryKey: ['profiles'],
-    queryFn: () => api<Profile[]>('/profiles'),
-    staleTime: Infinity,
+// The identity drafts are written as — currently always Mario.
+export const useWritingProfile = () =>
+  useQuery({ queryKey: ['profile'], queryFn: () => api<Profile>('/profiles/current') })
+
+export function useUpdateVoice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (voiceGuide: string) =>
+      api<Profile>('/profiles/current', { method: 'PATCH', body: JSON.stringify({ voiceGuide }) }),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile),
   })
+}
 
 // Kept fresh by server events (lib/events.ts) — no polling.
 export const useAssets = (scope: 'inbox' | 'all', projectId?: string) =>
@@ -115,7 +121,7 @@ export const useIdeas = (status = 'suggested,saved') =>
 export function useGenerateIdeas() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { assetIds: string[]; profileId?: string | null; instruction?: string }) =>
+    mutationFn: (body: { assetIds: string[]; instruction?: string }) =>
       api<Idea[]>('/ideas/generate', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
   })
@@ -133,7 +139,7 @@ export function useUpdateIdea() {
 export function useDraftIdea() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; profileId: string; instruction?: string }) =>
+    mutationFn: ({ id, ...body }: { id: string; instruction?: string }) =>
       api<{ postIds: string[] }>(`/ideas/${id}/draft`, {
         method: 'POST',
         body: JSON.stringify(body),

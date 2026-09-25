@@ -32,20 +32,3 @@
   overflow-wrap: anywhere;
   color: var(--ink-soft);
 }
-
-.settings-view__profiles {
-  gap: 12px;
-}
-
-.settings-view__profile {
-  padding: 20px 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-l);
-  background: var(--surface);
-}
-
-.settings-view__voice {
-  margin-top: 8px;
-  max-width: 64ch;
-  color: var(--muted);
-}

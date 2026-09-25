@@ -1,0 +1,42 @@
+.voice-form {
+  gap: 10px;
+  max-width: 760px;
+}
+
+.voice-form__input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  line-height: 1.55;
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.voice-form__footer {
+  gap: 16px;
+
+  .button + .button {
+    margin-left: 4px;
+  }
+}
+
+.voice-form__help {
+  max-width: 56ch;
+  color: var(--muted);
+}
+
+.voice-form__saved {
+  margin-right: 8px;
+  color: var(--muted);
+}
+
+.voice-form__error {
+  color: var(--signal);
+}
