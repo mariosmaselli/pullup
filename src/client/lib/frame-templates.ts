@@ -19,9 +19,9 @@ export function compatibleTemplates(platform: Platform, frame: Segment): Templat
 }
 
 const PREFERRED: Record<'text' | 'image' | 'video', string[]> = {
-  text: ['text-story', 'text-reveal', 'case-study-cover'],
-  image: ['image-caption', 'slow-zoom', 'device-frame'],
-  video: ['slow-zoom', 'device-frame'],
+  text: ['text-story', 'text-reveal'],
+  image: ['image-caption', 'device-frame'],
+  video: ['image-caption', 'device-frame'],
 }
 
 export function defaultTemplate(platform: Platform, frame: Segment): FrameTemplate | null {

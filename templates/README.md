@@ -14,9 +14,10 @@ templates/
 
 New folders show up in **Templates** automatically (Vite picks them up; no registration).
 The full contract with comments is in [`src/shared/template.ts`](../src/shared/template.ts).
-Look at [`text-story`](text-story) (canvas 2D still) and [`slow-zoom`](slow-zoom) (Three.js video,
-GSAP, video texture) first; [`shader-transition`](shader-transition) and [`planes-3d`](planes-3d)
-show multi-clip WebGL.
+Look at [`text-story`](text-story) (canvas 2D still) and [`image-caption`](image-caption) (canvas
+2D media + type) first; [`shader-transition`](shader-transition) (Three.js, GSAP, video textures,
+several clips) and [`device-frame`](device-frame) (3D scene) show WebGL. Removed for now and kept in
+git history (commit 4bfcd7c): `slow-zoom`, `case-study-cover`, `planes-3d` (to be reworked).
 
 ## The lifecycle
 
@@ -50,7 +51,7 @@ show multi-clip WebGL.
   - **Decode video samples yourself: `sRGBTransferEOTF(texture2D(uVideo, uv))`** — three.js
     uploads video frames undecoded (only its built-in materials decode them), so without it video
     comes out washed out. Images must not be decoded twice: use a uniform flag per input
-    (see `slow-zoom`, `device-frame`, `shader-transition`).
+    (see `device-frame`, `shader-transition`).
   - Composite type and add grain in sRGB (`sRGBTransferOETF` → mix → back with
     `sRGBTransferEOTF`): grain added in linear light is much stronger in the shadows and pushes
     the bitrate over Instagram's limit.
