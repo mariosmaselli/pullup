@@ -12,6 +12,7 @@
 }
 
 // Every control in a page header is the same height, whatever size the page asked for.
+// Fixed heights set the size, so these get side padding only and centre their content.
 .view-header__actions {
   gap: var(--space-8);
 
@@ -21,14 +22,15 @@
   }
 
   .segmented {
+    align-items: center;
     height: 40px;
-    padding: var(--space-8);
+    padding: 0 var(--space-8);
   }
 
   .segmented__option {
     display: flex;
     align-items: center;
-    height: 100%;
+    height: 24px;
     padding: 0 var(--space-16);
   }
 }
