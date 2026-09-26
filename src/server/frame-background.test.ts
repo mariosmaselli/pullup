@@ -106,6 +106,18 @@ describe('frame backgrounds', () => {
     expect(post.current?.segments[1]).toMatchObject({ assetId: photo.id, assetIds: [photo.id] })
   })
 
+  it('keeps the template’s other text fields (corner labels) with the frame', async () => {
+    const id = makeStory()
+    const template = {
+      id: 'default',
+      text: { labelTopLeft: 'Nonlinear Studio', labelBottomRight: '2026' },
+    }
+    const res = await save(id, [{ text: 'Hello', template }])
+    expect(res.status).toBe(201)
+    const post = (await res.json()) as PostDetail
+    expect(post.current?.segments[0]?.template).toEqual(template)
+  })
+
   it('needs a private background approved before the post can go public', async () => {
     const id = makeStory()
     await save(id, [

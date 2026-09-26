@@ -94,6 +94,40 @@ describe('renderMatchesFrame', () => {
   })
 })
 
+describe('frame text fields', () => {
+  // A render of a template with a caption and two labels (the caption is the frame's text).
+  const withLabels = (labels: Record<string, string>, caption = 'Hello') => {
+    const r = render()
+    r.inputs.text = { caption, labelTopLeft: '', labelBottomRight: '', ...labels }
+    return r
+  }
+  const frame = (text?: Record<string, string>) => ({
+    text: 'Hello',
+    assetId: null,
+    kind: 'text' as const,
+    template: { id: 'text-story', ...(text ? { text } : {}) },
+  })
+
+  it('matches the first field to the frame text and the others to template.text', () => {
+    expect(renderMatchesFrame(withLabels({}), frame())).toBe(true)
+    expect(renderMatchesFrame(withLabels({ labelTopLeft: 'Studio' }), frame())).toBe(false)
+    expect(
+      renderMatchesFrame(withLabels({ labelTopLeft: 'Studio' }), frame({ labelTopLeft: 'Studio' }))
+    ).toBe(true)
+    expect(
+      renderMatchesFrame(withLabels({ labelTopLeft: 'Studio' }), frame({ labelTopLeft: 'Other' }))
+    ).toBe(false)
+    expect(renderMatchesFrame(withLabels({}), frame({ labelTopLeft: 'Studio' }))).toBe(false)
+    // Keys the template doesn't have are ignored.
+    expect(renderMatchesFrame(withLabels({}), frame({ subtitle: 'x' }))).toBe(true)
+  })
+
+  it('outdates a render when the frame text changes, even to empty', () => {
+    expect(renderMatchesFrame(withLabels({}, 'Hello'), { ...frame(), text: '' })).toBe(false)
+    expect(renderMatchesFrame(withLabels({}, ''), { ...frame(), text: '' })).toBe(true)
+  })
+})
+
 describe('frame backgrounds', () => {
   const frame = {
     text: 'Hello',

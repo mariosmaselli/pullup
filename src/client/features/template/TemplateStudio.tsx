@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
-import type { Aspect, MediaInput, Render, TemplateInputs, TemplateMeta } from '@shared/template.ts'
+import {
+  ASPECT_LABEL,
+  ASPECT_SIZE,
+  paramVisible,
+  resolveOutputKind,
+  type Aspect,
+  type MediaInput,
+  type Render,
+  type TemplateInputs,
+  type TemplateMeta,
+} from '@shared/template.ts'
 import { AnimationExport } from '../../components/AnimationExport/AnimationExport.tsx'
 import { BackgroundPicker } from '../../components/BackgroundPicker/BackgroundPicker.tsx'
 import { Button } from '../../components/Button/Button.tsx'
@@ -10,12 +20,15 @@ import { ParamField } from '../../components/ParamField/ParamField.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
 import { bytes, relativeTime } from '../../lib/format.ts'
 import { useAssets, useDeleteRender, useRenders } from '../../lib/queries.ts'
-import { PreviewController, renderTemplate, resolveMedia } from '../../render/client.ts'
+import {
+  PreviewController,
+  previewWidth,
+  renderTemplate,
+  resolveMedia,
+} from '../../render/client.ts'
 import { templateMeta } from '../../render/templates.ts'
 import { BACKGROUND_PARAMS, takesBackground } from '../../../../templates/_lib/background.ts'
 import './TemplateStudio.scss'
-
-const PREVIEW_WIDTH = 540
 
 interface StudioState {
   aspect: Aspect
@@ -85,6 +98,21 @@ function Studio({ meta }: { meta: TemplateMeta }) {
     [allAssets]
   )
   const needsMedia = mediaIds.length < meta.media.min
+  // What the render will be — a still or a video — for these settings ('auto' templates decide per
+  // render: e.g. a JPEG when nothing moves). From the picked assets, so it follows a pick at once.
+  const kindOf = (id: string) =>
+    visual.find((a) => a.id === id)?.kind === 'video' ? 'video' : 'image'
+  const output = resolveOutputKind(meta, {
+    media: mediaIds.map((id) => ({ kind: kindOf(id) })),
+    background: takes && backgroundId ? { kind: kindOf(backgroundId) } : null,
+    text: state.text,
+    params: state.params,
+  })
+  const isVideo = output === 'video'
+  // Text fields: the multiline ones, then the one-line ones (labels) side by side.
+  const textFields = Object.entries(meta.text ?? {})
+  const labelFields = textFields.filter(([, spec]) => !spec.multiline)
+  const groupLabels = labelFields.length > 1
   // The chosen background isn't resolved yet (a video's proxy may be building).
   const backgroundAsset = visual.find((a) => a.id === backgroundId)
   const backgroundPending = !!backgroundId && background?.assetId !== backgroundId
@@ -164,7 +192,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
   // and keeps the time, play state and last frame (a slider drag updates live, video keeps going).
   useEffect(() => {
     if (needsMedia || preparing || backgroundPending || media.length !== mediaIds.length) return
-    preview.current?.load(meta, inputs, PREVIEW_WIDTH)
+    preview.current?.load(meta, inputs, previewWidth(inputs.aspect))
   }, [
     meta,
     inputs,
@@ -223,10 +251,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
               <Segmented<Aspect>
                 label="Format"
                 value={state.aspect}
-                options={meta.aspects.map((a) => ({
-                  value: a,
-                  label: a === '9:16' ? 'Story 9:16' : a === '4:5' ? 'Feed 4:5' : 'Square',
-                }))}
+                options={meta.aspects.map((a) => ({ value: a, label: ASPECT_LABEL[a] }))}
                 onChange={(aspect) => setState((s) => ({ ...s, aspect }))}
               />
             </div>
@@ -247,30 +272,34 @@ function Studio({ meta }: { meta: TemplateMeta }) {
             </div>
           ) : null}
 
-          {Object.entries(meta.text ?? {}).map(([key, spec]) => (
-            <label key={key} className="template-studio__field flex flex-col">
-              <span className="template-studio__label -meta">
-                {spec.label}
-                {spec.max ? ` · ${[...(state.text[key] ?? '')].length}/${spec.max}` : ''}
-              </span>
-              {spec.multiline ? (
-                <textarea
-                  className="template-studio__input -p1"
-                  rows={4}
-                  value={state.text[key] ?? ''}
-                  onChange={(e) => setText(key, e.target.value)}
-                />
-              ) : (
-                <input
-                  className="template-studio__input -p1"
-                  value={state.text[key] ?? ''}
-                  onChange={(e) => setText(key, e.target.value)}
-                />
-              )}
-            </label>
-          ))}
+          {textFields
+            .filter(([, spec]) => spec.multiline || !groupLabels)
+            .map(([key, spec]) => (
+              <TextField
+                key={key}
+                spec={spec}
+                value={state.text[key] ?? ''}
+                onChange={(v) => setText(key, v)}
+              />
+            ))}
 
-          {meta.kind === 'video' && meta.duration ? (
+          {groupLabels ? (
+            <div className="template-studio__field flex flex-col">
+              <span className="template-studio__label -meta">Labels</span>
+              <div className="template-studio__labels">
+                {labelFields.map(([key, spec]) => (
+                  <TextField
+                    key={key}
+                    spec={spec}
+                    value={state.text[key] ?? ''}
+                    onChange={(v) => setText(key, v)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {isVideo && meta.duration ? (
             <label className="template-studio__field flex flex-col">
               <span className="template-studio__label -meta">Duration · {state.duration}s</span>
               <input
@@ -286,6 +315,9 @@ function Studio({ meta }: { meta: TemplateMeta }) {
 
           {Object.entries(meta.params ?? {})
             .filter(([key]) => !(takes && key in BACKGROUND_PARAMS))
+            .filter(([, spec]) =>
+              paramVisible(spec, { params: state.params, media: mediaIds.length })
+            )
             .map(([key, spec]) => (
               <ParamField
                 key={key}
@@ -310,7 +342,12 @@ function Studio({ meta }: { meta: TemplateMeta }) {
 
         {/* Preview */}
         <section className="template-studio__stage flex flex-col items-center flex-1">
-          <div ref={stageRef} className="template-studio__frame" data-aspect={state.aspect}>
+          <div
+            ref={stageRef}
+            className="template-studio__frame"
+            data-aspect={state.aspect}
+            data-wide={ASPECT_SIZE[state.aspect].width > ASPECT_SIZE[state.aspect].height}
+          >
             {needsMedia ? (
               <p className="template-studio__overlay -p1">
                 Pick {meta.media.min} {meta.media.kinds.join(' or ')}
@@ -320,7 +357,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
               <p className="template-studio__overlay -p1">Preparing video…</p>
             ) : null}
           </div>
-          {meta.kind === 'video' ? (
+          {isVideo ? (
             <div className="template-studio__transport flex items-center">
               <Button
                 variant="ghost"
@@ -358,11 +395,11 @@ function Studio({ meta }: { meta: TemplateMeta }) {
           >
             {progress !== null
               ? `Rendering… ${Math.round(progress * 100)}%`
-              : meta.kind === 'video'
+              : isVideo
                 ? 'Render MP4'
                 : 'Render JPEG'}
           </Button>
-          {progress !== null && meta.kind === 'video' ? (
+          {progress !== null && isVideo ? (
             <Button variant="ghost" size="s" onClick={() => abort.current?.abort()}>
               Cancel
             </Button>
@@ -396,6 +433,40 @@ function Studio({ meta }: { meta: TemplateMeta }) {
         </aside>
       </div>
     </div>
+  )
+}
+
+// One text field of the template (a textarea for multiline ones), with its character count.
+function TextField({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: NonNullable<TemplateMeta['text']>[string]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="template-studio__field flex flex-col">
+      <span className="template-studio__label -meta">
+        {spec.label}
+        {spec.max ? ` · ${[...value].length}/${spec.max}` : ''}
+      </span>
+      {spec.multiline ? (
+        <textarea
+          className="template-studio__input -p1"
+          rows={4}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          className="template-studio__input -p1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </label>
   )
 }
 

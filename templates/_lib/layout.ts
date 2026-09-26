@@ -1,4 +1,5 @@
-import type { ParamSpec } from '@shared/template.ts'
+import type { Aspect, ParamSpec } from '@shared/template.ts'
+import { STORY_TYPE } from './text.ts'
 
 // Shared layout options for templates that show media full frame and/or set type. Spread the
 // param groups into `meta.params` so every template offers the same controls with the same keys
@@ -48,6 +49,18 @@ export const TEXT_POSITION_PARAMS = {
   },
   textAlign: { type: 'select', label: 'Text align', options: ['Left', 'Center'], default: 'Left' },
 } satisfies Record<string, ParamSpec>
+
+// ── Frame margins ───────────────────────────────────────────────────────────────────────────
+
+// Design px (1080 on the short side). Stories keep clear of Instagram's header and reply bar
+// (Mario's 160 px bottom margin, mirrored at the top); feed, square and wide frames have no
+// overlay and sit on the 40 px grid.
+export const FRAME_MARGINS: Record<Aspect, { side: number; top: number; bottom: number }> = {
+  '9:16': { side: STORY_TYPE.side, top: STORY_TYPE.bottom, bottom: STORY_TYPE.bottom },
+  '4:5': { side: STORY_TYPE.side, top: 40, bottom: 40 },
+  '1:1': { side: STORY_TYPE.side, top: 40, bottom: 40 },
+  '16:9': { side: STORY_TYPE.side, top: 40, bottom: 40 },
+}
 
 export type MediaFit = 'Fill' | 'Fit'
 export type TextPosition = 'Top' | 'Middle' | 'Bottom'

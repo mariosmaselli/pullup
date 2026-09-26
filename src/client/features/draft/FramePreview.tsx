@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import type { Asset, Segment } from '@shared/types.ts'
 import {
   ASPECT_SIZE,
+  type Aspect,
   type MediaInput,
+  type OutputKind,
   type TemplateInputs,
   type TemplateMeta,
 } from '@shared/template.ts'
 import { mediaRect, type Rect } from '../../../../templates/_lib/layout.ts'
 import { backgroundOptions } from '../../../../templates/_lib/background.ts'
+import { LABEL_KEYS } from '../../../../templates/_lib/base.ts'
 import { PreviewController, resolveMedia } from '../../render/client.ts'
 import './FramePreview.scss'
 
@@ -16,16 +19,20 @@ interface Props {
   // The frame's first media, and how many it has.
   asset?: Asset
   count?: number
-  aspect: '9:16' | '4:5'
+  aspect: Aspect
   // The template's settings for this frame (defaults + changes): the stand-in follows the shared
   // media size / text position options (templates/_lib/layout.ts), type size and colours.
   params?: Record<string, unknown>
+  // The frame's corner labels (templates/_lib/base.ts LABEL_KEYS), shown small in the corners.
+  labels?: Record<string, string>
   // The frame's background image/video (templates/_lib/background.ts), under the media.
   background?: Asset
   // Draw the frame with its template, live: the stand-in shows until the first frame is drawn,
   // then every change redraws in place. One live preview at a time (it runs a render worker).
   live?: {
     meta: TemplateMeta
+    // What the frame renders to (a still rests at t = 0; a video can be scrubbed).
+    kind: OutputKind
     inputs: TemplateInputs
     assetIds: string[]
     backgroundId?: string | null
@@ -71,6 +78,7 @@ export function FramePreview({
   count = asset ? 1 : 0,
   aspect,
   params = {},
+  labels = {},
   background,
   live,
 }: Props) {
@@ -90,7 +98,12 @@ export function FramePreview({
         focusY: num(params.focusY),
       })
     : null
-  const typeSize = num(params.typeSize) ?? num(params.size) ?? num(params.titleSize) ?? 84
+  const typeSize =
+    num(params.textSize) ?? num(params.typeSize) ?? num(params.size) ?? num(params.titleSize) ?? 84
+  // Corner labels, by corner (top-left, top-right, bottom-left, bottom-right).
+  const corners = LABEL_KEYS.map((key) => (labels[key] ?? '').replace(/\s+/g, ' ').trim())
+  const topLabels = !!(corners[0] || corners[1])
+  const bottomLabels = !!(corners[2] || corners[3])
   // The background, placed and treated like the template does (blur in cqw: 1cqw = 10.8 px).
   const ground = stillOf(background)
   const groundOptions = backgroundOptions(params)
@@ -114,11 +127,13 @@ export function FramePreview({
       data-position={position}
       data-align={params.textAlign === 'Center' ? 'center' : 'left'}
       data-fit={fit}
+      data-top-labels={topLabels}
+      data-bottom-labels={bottomLabels}
       data-live={live ? (shown ? 'shown' : 'loading') : undefined}
       style={
         {
           '--frame-ground': color(params.background),
-          '--frame-ink': color(params.color),
+          '--frame-ink': color(params.textColor) ?? color(params.color),
           '--frame-type': (typeSize / 1080) * 100,
         } as CSSProperties
       }
@@ -166,6 +181,13 @@ export function FramePreview({
         <span className="frame-preview__badge">Video</span>
       ) : null}
       {segment.text ? <p className="frame-preview__text">{segment.text}</p> : null}
+      {corners.map((text, i) =>
+        text ? (
+          <span key={LABEL_KEYS[i]} className="frame-preview__label" data-corner={LABEL_KEYS[i]}>
+            {text}
+          </span>
+        ) : null
+      )}
       {scrubbing !== null ? (
         <span className="frame-preview__scrub" style={{ width: pct(scrubbing) }} />
       ) : null}
@@ -192,7 +214,7 @@ function useLivePreview(live: Props['live']) {
   const isLive = !!live
   // The media and the background, as one key (a change resolves both again).
   const idsKey = live ? JSON.stringify([live.assetIds, live.backgroundId ?? null]) : ''
-  const duration = live?.meta.kind === 'video' ? live.inputs.duration : 0
+  const duration = live?.kind === 'video' ? live.inputs.duration : 0
   // Only a real change reloads (the editor rebuilds `live` on every render).
   const inputsKey = live ? JSON.stringify([live.meta.id, live.meta.version, live.inputs]) : ''
 

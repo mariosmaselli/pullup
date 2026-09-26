@@ -109,6 +109,7 @@ async function buildQueued() {
       next = await createSession({
         canvas: new OffscreenCanvas(message.width, message.height),
         meta: message.meta,
+        kind: message.kind,
         inputs: message.inputs,
         mode: 'preview',
         width: message.width,
@@ -157,13 +158,14 @@ async function exportRender(message: Extract<ToWorker, { type: 'export' }>) {
     current = await createSession({
       canvas,
       meta: message.meta,
+      kind: message.kind,
       inputs: message.inputs,
       mode: 'render',
       width: message.width,
       height: message.height,
     })
     const result =
-      message.meta.kind === 'still'
+      message.kind === 'still'
         ? await encodeStill(current, canvas, message.stillAt ?? 0)
         : await encodeVideo(
             current,

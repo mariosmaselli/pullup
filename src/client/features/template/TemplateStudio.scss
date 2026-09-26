@@ -40,6 +40,13 @@
   }
 }
 
+// One-line text fields (corner labels) two to a row.
+.template-studio__labels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .template-studio__input {
   width: 100%;
   padding: 8px 10px;
@@ -76,6 +83,16 @@
   &[data-aspect='1:1'] {
     aspect-ratio: 1;
     height: min(56vh, 600px);
+  }
+
+  // Landscape: as wide as the stage allows (the side panels take the rest), height from the ratio.
+  &[data-aspect='16:9'] {
+    aspect-ratio: 16 / 9;
+  }
+
+  &[data-wide='true'] {
+    width: min(100%, 960px);
+    height: auto;
   }
 }
 

@@ -1,6 +1,8 @@
-import type { TemplateInputs, TemplateMeta } from '@shared/template.ts'
+import type { OutputKind, TemplateInputs, TemplateMeta } from '@shared/template.ts'
 
-// Messages between the main thread and the render worker.
+// Messages between the main thread and the render worker. `meta` is metaData(meta) (functions
+// don't clone); `kind` is resolved on the main thread (resolveOutputKind) so the render record,
+// the preview and the encoder agree.
 
 export type ToWorker =
   | { type: 'preview'; canvas: OffscreenCanvas }
@@ -10,6 +12,7 @@ export type ToWorker =
       type: 'load'
       seq: number
       meta: TemplateMeta
+      kind: OutputKind
       inputs: TemplateInputs
       width: number
       height: number
@@ -20,6 +23,7 @@ export type ToWorker =
   | {
       type: 'export'
       meta: TemplateMeta
+      kind: OutputKind
       inputs: TemplateInputs
       width: number
       height: number

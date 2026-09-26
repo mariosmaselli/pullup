@@ -30,6 +30,8 @@ const revisionBody = z.object({
             duration: z.number().min(0).max(600).optional(),
             // Background image/video (counts as frame media for privacy, see frameMediaIds).
             background: z.object({ assetId: z.string() }).nullable().optional(),
+            // The template's other text fields (corner labels), see FrameTemplate.text.
+            text: z.record(z.string(), z.string().max(4000)).optional(),
           })
           .nullable()
           .optional(),

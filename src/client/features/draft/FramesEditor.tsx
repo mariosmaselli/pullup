@@ -9,8 +9,13 @@ import { PLATFORMS } from '../../lib/platforms.ts'
 import {
   changedParams,
   compatibleTemplates,
+  defaultTemplate,
+  extraTextFields,
   frameInputs,
   frameMediaKinds,
+  frameOutputKind,
+  switchTemplate,
+  withFrameText,
   withTemplate,
   type MediaKind,
 } from '../../lib/frame-templates.ts'
@@ -19,7 +24,6 @@ import { renderTemplate, resolveMedia } from '../../render/client.ts'
 import { templateMeta } from '../../render/templates.ts'
 import {
   BACKGROUND_MEDIA_KEYS,
-  BACKGROUND_PARAMS,
   takesBackground,
   type BackgroundKey,
 } from '../../../../templates/_lib/background.ts'
@@ -60,19 +64,10 @@ const backgroundOf = (frame: Segment) => {
   return meta && takesBackground(meta) ? frameBackgroundId(frame) : null
 }
 
-// A new template choice keeps the background — the image/video and how it sits — when the new
-// template takes one too; everything else starts from the new template's defaults.
-function switchTemplate(current: FrameTemplate | null | undefined, id: string): FrameTemplate {
-  const next = templateMeta(id)
-  if (!current?.background || !next || !takesBackground(next)) return { id }
-  const params = Object.fromEntries(
-    Object.entries(current.params ?? {}).filter(([key]) => key in BACKGROUND_PARAMS)
-  )
-  return {
-    id,
-    background: current.background,
-    ...(Object.keys(params).length ? { params } : {}),
-  }
+// Settings in a frame's Options: the template's params and its other text fields (labels).
+const optionCount = (id: string | undefined) => {
+  const meta = id ? templateMeta(id) : undefined
+  return meta ? Object.keys(meta.params ?? {}).length + extraTextFields(meta).length : 0
 }
 
 // Instagram stories (9:16 frames) and carousels (4:5 slides + caption). Each frame has on-screen
@@ -124,16 +119,23 @@ export function FramesEditor(props: Props) {
   const kindOf = (id: string): MediaKind => (byId.get(id)?.kind === 'video' ? 'video' : 'image')
 
   // New media keep the frame's template (and its options) while it still fits them; otherwise the
-  // frame falls back to the default for its media.
+  // frame falls back to the default for its media — keeping its labels and background when it has
+  // some (the default takes them too), else as no choice at all.
   const setMedia = (i: number, ids: string[]) => {
     const template = segments[i]!.template
-    const fits = compatibleTemplates(platform, ids.map(kindOf)).some((m) => m.id === template?.id)
+    const kinds = ids.map(kindOf)
+    const fits = compatibleTemplates(platform, kinds).some((m) => m.id === template?.id)
+    const fallback = defaultTemplate(platform, kinds)
+    const carried =
+      !fits && fallback && (template?.text || template?.background)
+        ? switchTemplate(template, fallback.id)
+        : null
     const first = ids[0]
     update(i, {
       assetId: first ?? null,
       kind: first ? kindOf(first) : 'text',
       assetIds: first ? ids : null,
-      template: fits ? template : null,
+      template: fits ? template : carried && (carried.text || carried.background) ? carried : null,
     })
   }
 
@@ -153,6 +155,9 @@ export function FramesEditor(props: Props) {
     )
     update(i, { template: Object.keys(kept).length ? { ...rest, params: kept } : rest })
   }
+  // The labels (and any other text field after the first) — content, so Reset keeps them.
+  const setText = (i: number, template: FrameTemplate, key: string, value: string) =>
+    update(i, { template: withFrameText(template, key, value) })
   // Reset: the template's defaults, without a background.
   const resetOptions = (i: number, template: FrameTemplate) => {
     const { params: _, background: __, ...rest } = template
@@ -178,10 +183,7 @@ export function FramesEditor(props: Props) {
 
   // One live preview at a time (it runs a render worker): the frame whose Options were opened
   // last and are still open. Other frames show their render while it is current, else a stand-in.
-  const hasOptions = (i: number) => {
-    const id = effective[i]?.template?.id
-    return Object.keys((id && templateMeta(id)?.params) || {}).length > 0
-  }
+  const hasOptions = (i: number) => optionCount(effective[i]?.template?.id) > 0
   const liveKey = [...optionsOpen].reverse().find((key) => {
     const i = keys.current.indexOf(key)
     return i >= 0 && hasOptions(i)
@@ -253,8 +255,17 @@ export function FramesEditor(props: Props) {
         const length = config.length(segment.text)
         const frame = effective[i]!
         const meta = frame.template ? templateMeta(frame.template.id) : undefined
-        const settings = Object.keys(meta?.params ?? {}).length
+        const settings = optionCount(meta?.id)
         const backgroundId = backgroundOf(frame)
+        const backgroundKind: MediaKind | null = backgroundId
+          ? byId.get(backgroundId)?.kind === 'video'
+            ? 'video'
+            : 'image'
+          : null
+        // A still or a video, for this frame's media and settings.
+        const output = meta
+          ? frameOutputKind(platform, frame, meta, kinds[i]!, backgroundKind)
+          : null
         // Stale keys (a setting the template no longer has) don't count as changes.
         const changed = meta
           ? Object.keys(changedParams(meta, frame.template?.params ?? {})).length +
@@ -298,9 +309,10 @@ export function FramesEditor(props: Props) {
                   aspect={frames.aspect}
                   params={inputs?.params}
                   background={backgroundId ? byId.get(backgroundId) : undefined}
+                  labels={frame.template?.text}
                   live={
-                    live && meta && inputs
-                      ? { meta, inputs, assetIds: ids, backgroundId }
+                    live && meta && inputs && output
+                      ? { meta, kind: output, inputs, assetIds: ids, backgroundId }
                       : undefined
                   }
                 />
@@ -404,11 +416,21 @@ export function FramesEditor(props: Props) {
                   {options.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name}
-                      {option.kind === 'video' ? ' · video' : ''}
+                      {(option.id === meta?.id
+                        ? output
+                        : frameOutputKind(
+                            platform,
+                            { ...frame, template: switchTemplate(frame.template, option.id) },
+                            option,
+                            kinds[i]!,
+                            backgroundKind
+                          )) === 'video'
+                        ? ' · video'
+                        : ''}
                     </option>
                   ))}
                 </select>
-                {frame.template && meta?.kind === 'video' ? (
+                {frame.template && meta && output === 'video' ? (
                   <label className="frames-editor__duration -p1 flex items-center">
                     <input
                       type="number"
@@ -470,7 +492,12 @@ export function FramesEditor(props: Props) {
                 <FrameOptions
                   meta={meta!}
                   params={frame.template.params ?? {}}
+                  media={ids.length}
                   onChange={(params) => setParams(i, frame.template!, params)}
+                  text={{
+                    values: frame.template.text ?? {},
+                    onChange: (key, value) => setText(i, frame.template!, key, value),
+                  }}
                   background={{
                     assetId: backgroundId,
                     asset: backgroundId ? byId.get(backgroundId) : undefined,

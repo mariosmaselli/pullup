@@ -1,13 +1,15 @@
 import { gsap } from 'gsap'
-import type {
-  BackgroundSource,
-  FontSpec,
-  MediaInput,
-  TemplateContext,
-  TemplateFactory,
-  TemplateInputs,
-  TemplateInstance,
-  TemplateMeta,
+import {
+  designScale,
+  type BackgroundSource,
+  type FontSpec,
+  type MediaInput,
+  type OutputKind,
+  type TemplateContext,
+  type TemplateFactory,
+  type TemplateInputs,
+  type TemplateInstance,
+  type TemplateMeta,
 } from '@shared/template.ts'
 import { loadImage, type MediaCache, VideoLayerImpl } from './media.ts'
 import { layoutText } from './text.ts'
@@ -65,6 +67,7 @@ function hash(seed: number, frame: number, k = 0) {
 
 export interface Session {
   meta: TemplateMeta
+  kind: OutputKind
   canvas: OffscreenCanvas
   // The media URLs it reads (the background's too).
   media: string[]
@@ -110,6 +113,8 @@ const defaults = (meta: TemplateMeta, inputs: TemplateInputs) => ({
 export async function createSession(options: {
   canvas: OffscreenCanvas
   meta: TemplateMeta
+  // What this render produces (resolved on the main thread, see protocol.ts).
+  kind: OutputKind
   inputs: TemplateInputs
   mode: 'preview' | 'render'
   width: number
@@ -117,13 +122,13 @@ export async function createSession(options: {
   // Preview only: media shared with earlier sessions of the same worker.
   cache?: MediaCache
 }): Promise<Session> {
-  const { canvas, meta, inputs, mode, width, height, cache } = options
+  const { canvas, meta, kind, inputs, mode, width, height, cache } = options
   canvas.width = width
   canvas.height = height
 
   const fps = meta.fps ?? 30
-  const duration = meta.kind === 'still' ? 0 : inputs.duration
-  const frames = meta.kind === 'still' ? 1 : Math.max(1, Math.round(duration * fps))
+  const duration = kind === 'still' ? 0 : inputs.duration
+  const frames = kind === 'still' ? 1 : Math.max(1, Math.round(duration * fps))
   const abort = new AbortController()
   const timelines: gsap.core.Timeline[] = []
   const images = new Map<number, Promise<ImageBitmap>>()
@@ -178,8 +183,9 @@ export async function createSession(options: {
     mode,
     width,
     height,
-    scale: width / 1080,
+    scale: designScale(width, height),
     aspect: inputs.aspect,
+    kind,
     fps,
     duration,
     frames,
@@ -250,6 +256,7 @@ export async function createSession(options: {
 
   const session: Session = {
     meta,
+    kind,
     canvas,
     media: [...inputs.media, ...(backgroundInput ? [backgroundInput] : [])].map((m) => m.url),
     fps,

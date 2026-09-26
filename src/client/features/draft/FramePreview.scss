@@ -1,6 +1,7 @@
 // A frame at any size, in container units of a 1080 px wide design (1cqw = 10.8 design px), so
-// the stand-in's proportions match the templates: 40 px side margin, 160 px story margins top and
-// bottom (40 px on a feed slide with media), type at the template's size (84 px by default).
+// the stand-in's proportions match the templates (templates/_lib/base.ts): 40 px side margin,
+// 160 px story margins top and bottom (40 px on a feed slide), type at the template's size (84 px
+// by default), corner labels at 32 px; with labels on an edge the caption keeps clear of them.
 // data-position / data-align / data-fit and the --frame-* properties follow the frame's options.
 .frame-preview {
   position: relative;
@@ -98,8 +99,16 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
 
-  [data-aspect='4:5'][data-media='true'] & {
+  [data-aspect='4:5'] & {
     bottom: 3.7cqw;
+  }
+
+  [data-bottom-labels='true'] & {
+    bottom: 20.7cqw;
+  }
+
+  [data-aspect='4:5'][data-bottom-labels='true'] & {
+    bottom: 9.6cqw;
   }
 
   [data-position='Top'] & {
@@ -107,8 +116,16 @@
     bottom: auto;
   }
 
-  [data-aspect='4:5'][data-media='true'][data-position='Top'] & {
+  [data-position='Top'][data-top-labels='true'] & {
+    top: 20.6cqw;
+  }
+
+  [data-aspect='4:5'][data-position='Top'] & {
     top: 3.7cqw;
+  }
+
+  [data-aspect='4:5'][data-position='Top'][data-top-labels='true'] & {
+    top: 9.5cqw;
   }
 
   [data-position='Middle'] & {
@@ -119,6 +136,49 @@
 
   [data-align='center'] & {
     text-align: center;
+  }
+}
+
+// Corner labels: 32 px, the text colour at 60%, cap tops on the top margin and baselines on the
+// bottom margin (approximately — the live preview is exact).
+.frame-preview__label {
+  position: absolute;
+  z-index: 1;
+  max-width: 44%;
+  overflow: hidden;
+  font-family: 'PP Neue Montreal', 'Neue Montreal', var(--font-sans);
+  font-size: 2.963cqw;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.6;
+
+  &[data-corner='labelTopLeft'],
+  &[data-corner='labelTopRight'] {
+    top: 14.2cqw;
+
+    [data-aspect='4:5'] > & {
+      top: 3.15cqw;
+    }
+  }
+
+  &[data-corner='labelBottomLeft'],
+  &[data-corner='labelBottomRight'] {
+    bottom: 14.2cqw;
+
+    [data-aspect='4:5'] > & {
+      bottom: 3.15cqw;
+    }
+  }
+
+  &[data-corner='labelTopLeft'],
+  &[data-corner='labelBottomLeft'] {
+    left: 3.7cqw;
+  }
+
+  &[data-corner='labelTopRight'],
+  &[data-corner='labelBottomRight'] {
+    right: 3.7cqw;
   }
 }
 

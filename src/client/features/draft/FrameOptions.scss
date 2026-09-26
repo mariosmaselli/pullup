@@ -6,6 +6,44 @@
   background: var(--bg);
 }
 
+// The labels, in the frame's reading order: top left, top right / bottom left, bottom right.
+.frame-options__text {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.frame-options__field {
+  gap: 4px;
+  min-width: 0;
+}
+
+.frame-options__label {
+  gap: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.frame-options__input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  outline: none;
+  resize: vertical;
+
+  &::placeholder {
+    color: var(--muted);
+  }
+
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
 .frame-options__params {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

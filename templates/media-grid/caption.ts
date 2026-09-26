@@ -19,6 +19,7 @@ export const MARGINS: Record<Aspect, { side: number; top: number; bottom: number
   '9:16': { side: STORY_TYPE.side, top: 160, bottom: STORY_TYPE.bottom },
   '4:5': { side: STORY_TYPE.side, top: 40, bottom: 40 },
   '1:1': { side: STORY_TYPE.side, top: 40, bottom: 40 },
+  '16:9': { side: STORY_TYPE.side, top: 40, bottom: 40 },
 }
 
 // Space between the caption's line boxes and the grid (design px).

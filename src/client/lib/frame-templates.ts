@@ -1,8 +1,17 @@
 import type { Platform } from '@shared/constants.ts'
 import type { Asset, FrameTemplate, Segment } from '@shared/types.ts'
-import type { Aspect, MediaInput, TemplateInputs, TemplateMeta } from '@shared/template.ts'
+import {
+  resolveOutputKind,
+  type Aspect,
+  type MediaInput,
+  type OutputKind,
+  type TemplateInputs,
+  type TemplateMeta,
+  type TextFieldSpec,
+} from '@shared/template.ts'
 import { frameAssetIds } from '@shared/frames.ts'
-import { templateMetas } from '../render/templates.ts'
+import { templateMeta, templateMetas } from '../render/templates.ts'
+import { BACKGROUND_PARAMS, takesBackground } from '../../../templates/_lib/background.ts'
 
 // How Instagram frames map onto templates.
 
@@ -35,10 +44,11 @@ export function compatibleTemplates(platform: Platform, kinds: MediaKind[]): Tem
 }
 
 // First choice per kind of frame; missing templates are skipped, then any compatible one is used.
+// `default` (templates/default) is the one template for text, an image or a clip.
 const PREFERRED = {
-  text: ['text-story', 'text-reveal'],
-  image: ['image-caption'],
-  video: ['video-caption'],
+  text: ['default', 'text-story'],
+  image: ['default', 'image-caption'],
+  video: ['default', 'video-caption'],
   several: ['media-grid'],
 }
 
@@ -57,13 +67,69 @@ export function defaultTemplate(platform: Platform, kinds: MediaKind[]): FrameTe
 // The frame with its effective template: its own choice while that template exists and fits the
 // frame's media, otherwise the default.
 export function withTemplate(platform: Platform, frame: Segment, kinds: MediaKind[]): Segment {
-  if (
-    frame.template &&
-    compatibleTemplates(platform, kinds).some((meta) => meta.id === frame.template!.id)
-  ) {
+  const template = frame.template
+  if (template && compatibleTemplates(platform, kinds).some((meta) => meta.id === template.id)) {
     return frame
   }
   return { ...frame, template: defaultTemplate(platform, kinds) }
+}
+
+// The template's text fields the frame edits in its Options: all but the first (that one is the
+// frame's own text) — e.g. the corner labels.
+export function extraTextFields(meta: TemplateMeta): [string, TextFieldSpec][] {
+  return Object.entries(meta.text ?? {}).slice(1)
+}
+
+// A new template choice keeps what still applies: the background — the image/video and how it
+// sits — when the new template takes one too, and the text fields it shares (the labels).
+// Everything else starts from the new template's defaults.
+export function switchTemplate(
+  current: FrameTemplate | null | undefined,
+  id: string
+): FrameTemplate {
+  if (current?.id === id) return current
+  const next = templateMeta(id)
+  const template: FrameTemplate = { id }
+  if (!next || !current) return template
+  if (current.background && takesBackground(next)) {
+    template.background = current.background
+    const params = Object.fromEntries(
+      Object.entries(current.params ?? {}).filter(([key]) => key in BACKGROUND_PARAMS)
+    )
+    if (Object.keys(params).length) template.params = params
+  }
+  const fields = new Set(extraTextFields(next).map(([key]) => key))
+  const text = Object.fromEntries(
+    Object.entries(current.text ?? {}).filter(([key, value]) => fields.has(key) && value)
+  )
+  if (Object.keys(text).length) template.text = text
+  return template
+}
+
+// The frame's other text fields with one set (an empty value is removed, not stored).
+export function withFrameText(template: FrameTemplate, key: string, value: string): FrameTemplate {
+  const { text: _, ...rest } = template
+  const { [key]: __, ...others } = template.text ?? {}
+  const text = value ? { ...others, [key]: value } : others
+  return Object.keys(text).length ? { ...rest, text } : rest
+}
+
+// What the frame renders to with this template — a still or a video ('auto' templates decide
+// from the media, the background and the settings: e.g. a JPEG when nothing moves).
+export function frameOutputKind(
+  platform: Platform,
+  frame: Segment,
+  meta: TemplateMeta,
+  kinds: MediaKind[],
+  backgroundKind: MediaKind | null
+): OutputKind {
+  const inputs = frameInputs(platform, frame, meta, [])
+  return resolveOutputKind(meta, {
+    media: kinds.map((kind) => ({ kind })),
+    background: backgroundKind ? { kind: backgroundKind } : null,
+    text: inputs.text,
+    params: inputs.params,
+  })
 }
 
 // Settings the frame changed from the template's defaults (only these are stored on the frame).
@@ -88,15 +154,13 @@ export function frameInputs(
   meta: TemplateMeta,
   media: MediaInput[]
 ): TemplateInputs {
-  // The frame's text fills the template's main field. Optional fields start empty: their defaults
-  // are sample copy for the Templates studio ("Echo Labs", "(01)"), and a post must never carry
-  // details Mario didn't write.
+  // The frame's text fills the template's first field; the others come from the frame's Options
+  // (template.text) and are otherwise empty: their defaults are sample copy for the Templates
+  // studio ("Echo Labs", "(01)"), and a post must never carry details Mario didn't write.
   const textKey = Object.keys(meta.text ?? {})[0]
+  const extra = frame.template?.text ?? {}
   const text = Object.fromEntries(
-    Object.entries(meta.text ?? {}).map(([key, spec]) => [
-      key,
-      spec.optional ? '' : (spec.default ?? ''),
-    ])
+    Object.keys(meta.text ?? {}).map((key) => [key, extra[key] ?? ''])
   )
   if (textKey) text[textKey] = frame.text
   const params = Object.fromEntries(

@@ -141,6 +141,67 @@ describe('renders', () => {
     expect(ok).toMatchObject({ status: 'ready', kind: 'image', posterUrl: null, warnings: [] })
   })
 
+  it('takes wide 16:9 renders (1920×1080) and stills of templates that also make videos', async () => {
+    const wide = (await (
+      await app.request(
+        '/api/renders',
+        json({
+          templateId: 'test-template',
+          templateVersion: 1,
+          kind: 'video',
+          aspect: '16:9',
+          fps: 30,
+          inputs: { ...inputs, aspect: '16:9' },
+        })
+      )
+    ).json()) as Render
+    expect(wide).toMatchObject({ aspect: '16:9', width: 1920, height: 1080, durationMs: 4000 })
+    const file = join(library.root, 'wide.mp4')
+    ffmpeg(
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=1920x1080:rate=30:duration=3',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-profile:v',
+      'high',
+      '-bf',
+      '0',
+      '-movflags',
+      '+faststart',
+      file
+    )
+    const stored = (await (
+      await app.request(`/api/renders/${wide.id}/file`, {
+        method: 'PUT',
+        body: new Uint8Array(readFileSync(file)),
+        headers: { 'Content-Type': 'video/mp4' },
+      })
+    ).json()) as Render
+    expect(stored).toMatchObject({ status: 'ready', kind: 'video', warnings: [] })
+
+    // An 'auto' template's still: the inputs keep their duration, the render has none.
+    const still = (await (
+      await app.request(
+        '/api/renders',
+        json({
+          templateId: 'test-template',
+          templateVersion: 1,
+          kind: 'image',
+          aspect: '16:9',
+          fps: null,
+          inputs: { ...inputs, aspect: '16:9', duration: 5 },
+        })
+      )
+    ).json()) as Render
+    expect(still).toMatchObject({ kind: 'image', fps: null, durationMs: null, width: 1920 })
+  })
+
   it('fails renders left pending by a closed tab', async () => {
     const render = await create('video')
     db.prepare("UPDATE renders SET created_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(

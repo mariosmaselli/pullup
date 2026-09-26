@@ -1,8 +1,24 @@
 import { Link } from '@tanstack/react-router'
+import type { TemplateMeta } from '@shared/template.ts'
 import { ViewHeader } from '../../components/ViewHeader/ViewHeader.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { templateMetas } from '../../render/templates.ts'
 import './TemplatesView.scss'
+
+// 'auto' templates render a still or a video depending on the settings (e.g. a JPEG when nothing
+// moves).
+const KIND_LABEL: Record<TemplateMeta['kind'], string> = {
+  still: 'Still',
+  video: 'Video',
+  auto: 'Still or video',
+}
+
+function mediaLabel({ media: { min, max, kinds } }: TemplateMeta) {
+  const kind = kinds.join(' or ')
+  if (max === 0) return 'Text only'
+  if (min === 0) return max === 1 ? `Text, or one ${kind}` : `Up to ${max} ${kind}s`
+  return `${min === max ? min : `${min}–${max}`} ${kind}${max === 1 ? '' : 's'}`
+}
 
 export function TemplatesView() {
   return (
@@ -21,18 +37,12 @@ export function TemplatesView() {
               className="templates-view__card flex flex-col"
             >
               <div className="flex items-center justify-between">
-                <span className="templates-view__kind -meta">
-                  {meta.kind === 'video' ? 'Video' : 'Still'}
-                </span>
+                <span className="templates-view__kind -meta">{KIND_LABEL[meta.kind]}</span>
                 <span className="templates-view__aspects -meta">{meta.aspects.join(' · ')}</span>
               </div>
               <h2 className="-t2">{meta.name}</h2>
               <p className="templates-view__description -p1">{meta.description}</p>
-              <span className="templates-view__media -meta">
-                {meta.media.max === 0
-                  ? 'Text only'
-                  : `${meta.media.min === meta.media.max ? meta.media.min : `${meta.media.min}–${meta.media.max}`} ${meta.media.kinds.join(' or ')}${meta.media.max === 1 ? '' : 's'}`}
-              </span>
+              <span className="templates-view__media -meta">{mediaLabel(meta)}</span>
             </Link>
           ))}
         </div>

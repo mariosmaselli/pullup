@@ -1,7 +1,11 @@
 import {
   ASPECT_SIZE,
+  metaData,
+  renderKindOf,
+  resolveOutputKind,
   type Aspect,
   type MediaInput,
+  type OutputKind,
   type Render,
   type TemplateInputs,
   type TemplateMeta,
@@ -23,7 +27,17 @@ export const sizeFor = (aspect: Aspect, width: number) => {
   return { width, height: Math.round((full.height / full.width) * width) }
 }
 
+// Canvas width of a preview drawn at `share` of the full output size (0.5 = the studio's half
+// size): 540 for 9:16 / 4:5 / 1:1, 960 for 16:9 — the same design scale for every format.
+export const previewWidth = (aspect: Aspect, share = 0.5) =>
+  Math.round(ASPECT_SIZE[aspect].width * share)
+
+// What these inputs render to — a still or a video (TemplateMeta.kind / outputKind).
+export const outputKindOf = (meta: TemplateMeta, inputs: TemplateInputs): OutputKind =>
+  resolveOutputKind(meta, inputs)
+
 export interface PreviewLoaded {
+  kind: OutputKind
   duration: number
   frames: number
   fps: number
@@ -50,6 +64,7 @@ export class PreviewController {
   } | null = null
   private flushHandle = 0
   private sent = new Map<number, number>() // seq → when the change was asked for
+  private kinds = new Map<number, OutputKind>() // seq → what it renders
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -87,10 +102,13 @@ export class PreviewController {
     const seq = ++this.seq
     this.sent.set(seq, next.since)
     const { width, height } = sizeFor(next.inputs.aspect, next.width)
+    const kind = outputKindOf(next.meta, next.inputs)
+    this.kinds.set(seq, kind)
     this.send({
       type: 'load',
       seq,
-      meta: next.meta,
+      meta: metaData(next.meta),
+      kind,
       inputs: next.inputs,
       width,
       height,
@@ -99,8 +117,10 @@ export class PreviewController {
 
   private loaded(m: Extract<FromWorker, { type: 'loaded' }>) {
     const since = this.sent.get(m.seq) ?? performance.now()
+    const kind = this.kinds.get(m.seq) ?? (m.duration > 0 ? 'video' : 'still')
     // Loads the worker skipped for a newer one are shown by this one.
     for (const seq of this.sent.keys()) if (seq <= m.seq) this.sent.delete(seq)
+    for (const seq of this.kinds.keys()) if (seq <= m.seq) this.kinds.delete(seq)
     const end = performance.now()
     // Visible in the DevTools performance panel (and measurable from tests).
     performance.measure('Pullup preview', {
@@ -109,6 +129,7 @@ export class PreviewController {
       detail: { seq: m.seq, workerMs: m.ms, t: m.t },
     })
     this.handlers.onLoaded?.({
+      kind,
       duration: m.duration,
       frames: m.frames,
       fps: m.fps,
@@ -140,18 +161,20 @@ export interface RenderRequest {
   signal?: AbortSignal
 }
 
-// Full-size export in a fresh worker, then upload. Returns the stored render (with checks).
+// Full-size export in a fresh worker, then upload. Returns the stored render (with checks). A
+// still ('image') or a video, as resolveOutputKind() decides for these inputs.
 export async function renderTemplate(request: RenderRequest): Promise<Render> {
   const { meta, inputs } = request
   const { width, height } = ASPECT_SIZE[inputs.aspect]
+  const kind = outputKindOf(meta, inputs)
   const render = await api<Render>('/renders', {
     method: 'POST',
     body: JSON.stringify({
       templateId: meta.id,
       templateVersion: meta.version,
-      kind: meta.kind === 'still' ? 'image' : 'video',
+      kind: renderKindOf(kind),
       aspect: inputs.aspect,
-      fps: meta.kind === 'video' ? (meta.fps ?? 30) : null,
+      fps: kind === 'video' ? (meta.fps ?? 30) : null,
       inputs,
       postId: request.postId ?? null,
       segmentIndex: request.segmentIndex ?? null,
@@ -190,7 +213,14 @@ export async function renderTemplate(request: RenderRequest): Promise<Render> {
         else if (m.type === 'error') reject(new Error(m.message))
       }
       worker.onerror = (e) => reject(new Error(e.message || 'Render worker crashed'))
-      worker.postMessage({ type: 'export', meta, inputs, width, height } satisfies ToWorker)
+      worker.postMessage({
+        type: 'export',
+        meta: metaData(meta),
+        kind,
+        inputs,
+        width,
+        height,
+      } satisfies ToWorker)
     })
 
     const res = await fetch(`/api/renders/${render.id}/file`, {

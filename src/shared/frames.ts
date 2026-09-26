@@ -11,6 +11,10 @@ export interface FrameBackground {
 declare module './types.ts' {
   interface FrameTemplate {
     background?: FrameBackground | null
+    // The template's other text fields — all but the first, which is the frame's own text — e.g.
+    // the corner labels, edited in the frame's Options. Only non-empty values are kept; a field
+    // without one renders empty (never the template's sample copy).
+    text?: Record<string, string>
   }
 }
 
@@ -43,16 +47,20 @@ export function frameMediaIds(segment: Segment): string[] {
 const sameList = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id, i) => id === b[i])
 
-// Does this render still show this frame? Matched by content (template, text, media, background,
-// settings), not by position — reordering frames keeps their renders.
+// Does this render still show this frame? Matched by content (template, text fields, media,
+// background, settings), not by position — reordering frames keeps their renders.
 // A frame without a saved template choice (it uses the editor's default) matches a render of
 // any template, as long as its text and media match.
 export function renderMatchesFrame(render: Render, frame: Segment): boolean {
   if (render.status !== 'ready') return false
   if (frame.template && render.templateId !== frame.template.id) return false
   const inputs = render.inputs
-  // Frame text goes into the template's main text field.
-  if (frame.text.trim() && !Object.values(inputs.text).includes(frame.text)) return false
+  // The frame's text went into the template's first text field (renders keep the template's field
+  // order), the other fields came from template.text — empty when the frame has none.
+  const [mainKey, ...otherKeys] = Object.keys(inputs.text)
+  if (mainKey !== undefined && inputs.text[mainKey] !== frame.text) return false
+  const extra = frame.template?.text ?? {}
+  if (otherKeys.some((key) => (inputs.text[key] ?? '') !== (extra[key] ?? ''))) return false
   // Same media in the same order: adding, removing or reordering media outdates the render.
   const media = inputs.media.map((m) => m.assetId)
   if (!sameList(media, frameAssetIds(frame))) return false
