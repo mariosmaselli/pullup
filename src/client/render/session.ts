@@ -1,5 +1,6 @@
 import { gsap } from 'gsap'
 import type {
+  BackgroundSource,
   FontSpec,
   MediaInput,
   TemplateContext,
@@ -65,7 +66,7 @@ function hash(seed: number, frame: number, k = 0) {
 export interface Session {
   meta: TemplateMeta
   canvas: OffscreenCanvas
-  // The media URLs it reads.
+  // The media URLs it reads (the background's too).
   media: string[]
   fps: number
   duration: number
@@ -84,8 +85,12 @@ export interface Session {
   dispose(): void
 }
 
-// Each session's video layers, for adopt() of the session that replaces it.
-const layersOf = new WeakMap<Session, (VideoLayerImpl | null)[]>()
+// Each session's video layers (per media, and the background's), for adopt() of the session
+// that replaces it.
+const layersOf = new WeakMap<
+  Session,
+  { media: (VideoLayerImpl | null)[]; background: VideoLayerImpl | null }
+>()
 
 const defaults = (meta: TemplateMeta, inputs: TemplateInputs) => ({
   text: Object.fromEntries(
@@ -125,17 +130,45 @@ export async function createSession(options: {
   const layers = inputs.media.map((m: MediaInput) =>
     m.kind === 'video' ? new VideoLayerImpl(m, cache) : null
   )
+  // The background is loaded before setup() like the media: a bitmap, or a video layer that only
+  // decodes what the template seeks.
+  const backgroundInput = inputs.background ?? null
+  const backgroundLayer =
+    backgroundInput?.kind === 'video' ? new VideoLayerImpl(backgroundInput, cache) : null
+  const loaded: { image: ImageBitmap | null } = { image: null }
+  const loadBackgroundImage = async (url: string) => {
+    loaded.image = await (cache ? cache.image(url) : loadImage(url, abort.signal))
+  }
   let factory: TemplateFactory
   try {
     ;[factory] = await Promise.all([
       loadTemplate(meta.id),
       ...layers.map((l) => l?.init()),
+      backgroundLayer?.init(),
+      backgroundInput?.kind === 'image' ? loadBackgroundImage(backgroundInput.url) : null,
       ...(meta.fonts ?? []).map(loadFont),
     ])
   } catch (err) {
     layers.forEach((l) => l?.dispose())
+    backgroundLayer?.dispose()
+    loaded.image?.close()
     throw err
   }
+  const background: BackgroundSource | null = backgroundLayer
+    ? {
+        kind: 'video',
+        width: backgroundLayer.width,
+        height: backgroundLayer.height,
+        video: backgroundLayer,
+      }
+    : loaded.image
+      ? {
+          kind: 'image',
+          width: loaded.image.width,
+          height: loaded.image.height,
+          image: loaded.image,
+        }
+      : null
 
   const random = prng(inputs.seed)
   const { text, params } = defaults(meta, inputs)
@@ -153,6 +186,7 @@ export async function createSession(options: {
     text,
     params,
     media: inputs.media,
+    background,
     seed: inputs.seed,
     random,
     hash: (frame, k) => hash(inputs.seed, frame, k),
@@ -190,6 +224,8 @@ export async function createSession(options: {
     abort.abort()
     for (const tl of timelines) tl.kill()
     layers.forEach((l) => l?.dispose())
+    backgroundLayer?.dispose()
+    background?.image?.close()
     images.forEach((p) => p.then((b) => b.close()).catch(() => {}))
   }
 
@@ -206,7 +242,7 @@ export async function createSession(options: {
     throw err
   }
 
-  const videoLayers = layers.filter((l): l is VideoLayerImpl => !!l)
+  const videoLayers = [...layers, backgroundLayer].filter((l): l is VideoLayerImpl => !!l)
   const step = (t: number, index: number) => {
     for (const tl of timelines) tl.seek(t, true)
     instance.update(t, index)
@@ -215,7 +251,7 @@ export async function createSession(options: {
   const session: Session = {
     meta,
     canvas,
-    media: inputs.media.map((m) => m.url),
+    media: [...inputs.media, ...(backgroundInput ? [backgroundInput] : [])].map((m) => m.url),
     fps,
     duration,
     frames,
@@ -241,11 +277,13 @@ export async function createSession(options: {
     },
 
     adopt(previous) {
-      const before = layersOf.get(previous) ?? []
+      const before = layersOf.get(previous)
+      if (!before) return
       layers.forEach((l, i) => {
-        const old = before[i]
+        const old = before.media[i]
         if (l && old) l.adopt(old)
       })
+      if (backgroundLayer && before.background) backgroundLayer.adopt(before.background)
     },
 
     planVideo() {
@@ -263,6 +301,6 @@ export async function createSession(options: {
       dispose()
     },
   }
-  layersOf.set(session, layers)
+  layersOf.set(session, { media: layers, background: backgroundLayer })
   return session
 }

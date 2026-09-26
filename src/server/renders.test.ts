@@ -151,6 +151,65 @@ describe('renders', () => {
     expect(after).toMatchObject({ status: 'failed', error: 'Interrupted before it finished' })
   })
 
+  it('times out renders left pending while the server keeps running', async () => {
+    const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+    const age = (id: string, minutes: number) =>
+      db.prepare('UPDATE renders SET created_at = ? WHERE id = ?').run(ago(minutes), id)
+    const status = async (id: string) =>
+      ((await (await app.request(`/api/renders/${id}`)).json()) as Render).status
+    const recent = await create('image')
+    const reloaded = await create('image') // its page was reloaded mid-render
+    age(recent.id, 5)
+    age(reloaded.id, 11)
+
+    // No restart: reads report it failed, the list too.
+    expect(await status(recent.id)).toBe('pending')
+    expect(await status(reloaded.id)).toBe('failed')
+    const list = (await (await app.request('/api/renders')).json()) as Render[]
+    expect(list.find((r) => r.id === reloaded.id)).toMatchObject({
+      status: 'failed',
+      error: 'Interrupted before it finished',
+    })
+    // The next render stores it as failed.
+    await create('image')
+    const row = db.prepare('SELECT status FROM renders WHERE id = ?').get(reloaded.id)
+    expect(row).toEqual({ status: 'failed' })
+
+    // A late upload still completes it.
+    const jpg = join(library.root, 'late.jpg')
+    ffmpeg('-f', 'lavfi', '-i', 'color=c=gray:s=1080x1920', '-frames:v', '1', jpg)
+    const late = (await (
+      await app.request(`/api/renders/${reloaded.id}/file`, {
+        method: 'PUT',
+        body: new Uint8Array(readFileSync(jpg)),
+        headers: { 'Content-Type': 'image/jpeg' },
+      })
+    ).json()) as Render
+    expect(late).toMatchObject({ status: 'ready', error: null })
+  })
+
+  it('keeps the background with the render inputs', async () => {
+    const background = {
+      assetId: 'bg-asset',
+      kind: 'video',
+      url: '/api/files/cache/bg-asset/proxy.mp4',
+      width: 1920,
+      height: 1080,
+      duration: 12,
+    }
+    const res = await app.request(
+      '/api/renders',
+      json({
+        templateId: 'test-template',
+        templateVersion: 1,
+        kind: 'image',
+        aspect: '9:16',
+        inputs: { ...inputs, background },
+      })
+    )
+    expect(((await res.json()) as Render).inputs.background).toEqual(background)
+  })
+
   it("zips a post's current frames in order and lists what is missing", async () => {
     const profile = (
       db.prepare("SELECT id FROM profiles WHERE slug = 'mario'").get() as { id: string }

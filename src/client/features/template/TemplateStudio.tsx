@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import type { Aspect, MediaInput, Render, TemplateInputs, TemplateMeta } from '@shared/template.ts'
 import { AnimationExport } from '../../components/AnimationExport/AnimationExport.tsx'
+import { BackgroundPicker } from '../../components/BackgroundPicker/BackgroundPicker.tsx'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { MediaPicker } from '../../components/MediaPicker/MediaPicker.tsx'
@@ -11,6 +12,7 @@ import { bytes, relativeTime } from '../../lib/format.ts'
 import { useAssets, useDeleteRender, useRenders } from '../../lib/queries.ts'
 import { PreviewController, renderTemplate, resolveMedia } from '../../render/client.ts'
 import { templateMeta } from '../../render/templates.ts'
+import { BACKGROUND_PARAMS, takesBackground } from '../../../../templates/_lib/background.ts'
 import './TemplateStudio.scss'
 
 const PREVIEW_WIDTH = 540
@@ -52,6 +54,10 @@ function Studio({ meta }: { meta: TemplateMeta }) {
   const [mediaIds, setMediaIds] = useState<string[]>([])
   const [media, setMedia] = useState<MediaInput[]>([])
   const [preparing, setPreparing] = useState(false)
+  // Background image/video (templates that spread BACKGROUND_PARAMS).
+  const takes = takesBackground(meta)
+  const [backgroundId, setBackgroundId] = useState<string | null>(null)
+  const [background, setBackground] = useState<MediaInput | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [time, setTime] = useState({ t: 0, playing: false, duration: 0 })
   const [progress, setProgress] = useState<number | null>(null)
@@ -71,7 +77,17 @@ function Studio({ meta }: { meta: TemplateMeta }) {
       ),
     [allAssets, meta.media.kinds]
   )
+  const visual = useMemo(
+    () =>
+      allAssets.filter(
+        (a) => (a.kind === 'image' || a.kind === 'video') && a.processingStatus === 'ready'
+      ),
+    [allAssets]
+  )
   const needsMedia = mediaIds.length < meta.media.min
+  // The chosen background isn't resolved yet (a video's proxy may be building).
+  const backgroundAsset = visual.find((a) => a.id === backgroundId)
+  const backgroundPending = !!backgroundId && background?.assetId !== backgroundId
 
   // Resolve what the worker reads for the picked assets (videos get a proxy on first use).
   useEffect(() => {
@@ -90,6 +106,21 @@ function Studio({ meta }: { meta: TemplateMeta }) {
     }
   }, [mediaIds])
 
+  // The same for the background.
+  useEffect(() => {
+    let cancelled = false
+    if (!backgroundId) {
+      setBackground(null)
+      return
+    }
+    resolveMedia([backgroundId])
+      .then(([resolved]) => !cancelled && setBackground(resolved ?? null))
+      .catch((err: Error) => !cancelled && setPreviewError(err.message))
+    return () => {
+      cancelled = true
+    }
+  }, [backgroundId])
+
   const inputs: TemplateInputs = useMemo(
     () => ({
       aspect: state.aspect,
@@ -98,8 +129,9 @@ function Studio({ meta }: { meta: TemplateMeta }) {
       text: state.text,
       params: state.params,
       seed: state.seed,
+      background: takes ? background : null,
     }),
-    [state, media]
+    [state, media, background, takes]
   )
 
   // One worker per canvas. A canvas can be handed to a worker only once, so each run of this
@@ -131,9 +163,18 @@ function Studio({ meta }: { meta: TemplateMeta }) {
   // Reload the preview on every change: the controller coalesces them to one per animation frame
   // and keeps the time, play state and last frame (a slider drag updates live, video keeps going).
   useEffect(() => {
-    if (needsMedia || preparing || media.length !== mediaIds.length) return
+    if (needsMedia || preparing || backgroundPending || media.length !== mediaIds.length) return
     preview.current?.load(meta, inputs, PREVIEW_WIDTH)
-  }, [meta, inputs, needsMedia, preparing, media.length, mediaIds.length, previewEpoch])
+  }, [
+    meta,
+    inputs,
+    needsMedia,
+    preparing,
+    backgroundPending,
+    media.length,
+    mediaIds.length,
+    previewEpoch,
+  ])
 
   const templateRenders = renders.filter((r) => r.templateId === meta.id)
   const shown = latest ?? templateRenders[0] ?? null
@@ -243,14 +284,28 @@ function Studio({ meta }: { meta: TemplateMeta }) {
             </label>
           ) : null}
 
-          {Object.entries(meta.params ?? {}).map(([key, spec]) => (
-            <ParamField
-              key={key}
-              spec={spec}
-              value={state.params[key]}
-              onChange={(v) => setParam(key, v)}
+          {Object.entries(meta.params ?? {})
+            .filter(([key]) => !(takes && key in BACKGROUND_PARAMS))
+            .map(([key, spec]) => (
+              <ParamField
+                key={key}
+                spec={spec}
+                value={state.params[key]}
+                onChange={(v) => setParam(key, v)}
+              />
+            ))}
+
+          {takes ? (
+            <BackgroundPicker
+              meta={meta}
+              params={state.params}
+              onParam={setParam}
+              assetId={backgroundId}
+              asset={backgroundAsset}
+              assets={visual}
+              onAsset={setBackgroundId}
             />
-          ))}
+          ) : null}
         </aside>
 
         {/* Preview */}
@@ -261,7 +316,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
                 Pick {meta.media.min} {meta.media.kinds.join(' or ')}
                 {meta.media.min === 1 ? '' : 's'} to preview.
               </p>
-            ) : preparing ? (
+            ) : preparing || (backgroundPending && backgroundAsset?.kind === 'video') ? (
               <p className="template-studio__overlay -p1">Preparing video…</p>
             ) : null}
           </div>
@@ -298,7 +353,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
         <aside className="template-studio__output flex flex-col shrink-0">
           <Button
             variant="primary"
-            disabled={needsMedia || preparing || progress !== null}
+            disabled={needsMedia || preparing || backgroundPending || progress !== null}
             onClick={startRender}
           >
             {progress !== null
@@ -374,7 +429,7 @@ function RenderResult({ render }: { render: Render }) {
       ) : (
         <span className="-meta template-studio__ok">Passes Instagram’s upload checks</span>
       )}
-      {render.kind === 'video' ? <AnimationExport render={render} /> : null}
+      {render.kind === 'video' ? <AnimationExport key={render.id} render={render} /> : null}
     </div>
   )
 }

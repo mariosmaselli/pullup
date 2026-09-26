@@ -41,6 +41,15 @@ interface RenderRow {
   created_at: string
 }
 
+// A render is 'pending' while its page encodes it (seconds, a few minutes for a long clip). One
+// whose page was closed or reloaded mid-render never finishes: past this age it reads as failed
+// (a late upload still completes it), and is stored as failed at the next start or new render.
+export const STALE_RENDER_MS = 10 * 60_000
+const STALE_ERROR = 'Interrupted before it finished'
+
+const isStale = (r: RenderRow, now = Date.now()) =>
+  r.status === 'pending' && Date.parse(r.created_at) < now - STALE_RENDER_MS
+
 const toRender = (r: RenderRow): Render => ({
   id: r.id,
   templateId: r.template_id,
@@ -52,8 +61,8 @@ const toRender = (r: RenderRow): Render => ({
   fps: r.fps,
   durationMs: r.duration_ms,
   inputs: JSON.parse(r.inputs),
-  status: r.status,
-  error: r.error,
+  status: isStale(r) ? 'failed' : r.status,
+  error: isStale(r) ? STALE_ERROR : r.error,
   warnings: JSON.parse(r.warnings),
   url: r.file_path ? fileUrl(r.file_path) : null,
   posterUrl: r.poster_path ? fileUrl(r.poster_path) : null,
@@ -212,6 +221,7 @@ export function createRenderStore(db: DB) {
 
   return {
     create(input: NewRender): Render {
+      this.failStale()
       const id = randomUUID()
       db.prepare(
         `INSERT INTO renders (id, template_id, template_version, kind, aspect, width, height, fps,
@@ -374,14 +384,15 @@ export function createRenderStore(db: DB) {
       return this.get(id)!
     },
 
-    // Renders left 'pending' by a closed tab or a crash never finish — mark them failed.
-    failStale(olderThanMinutes = 10) {
-      const cutoff = new Date(Date.now() - olderThanMinutes * 60_000).toISOString()
+    // Stores renders left 'pending' by a closed tab or a crash as failed (they already read as
+    // failed, see STALE_RENDER_MS).
+    failStale(olderThanMs = STALE_RENDER_MS) {
+      const cutoff = new Date(Date.now() - olderThanMs).toISOString()
       return db
         .prepare(
-          "UPDATE renders SET status = 'failed', error = 'Interrupted before it finished' WHERE status = 'pending' AND created_at < ?"
+          "UPDATE renders SET status = 'failed', error = ? WHERE status = 'pending' AND created_at < ?"
         )
-        .run(cutoff).changes
+        .run(STALE_ERROR, cutoff).changes
     },
 
     fail(id: string, error: string) {

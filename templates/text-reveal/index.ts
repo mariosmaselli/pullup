@@ -1,10 +1,12 @@
 import type { TemplateFactory, TextLayout } from '@shared/template.ts'
+import { createBackground2D, type Background2D } from '../_lib/background.ts'
 import { textBlockY, textLineX, textPlacement } from '../_lib/layout.ts'
 import { STORY_TYPE } from '../_lib/text.ts'
 import { parseAccents, type MarkedWord, type Segment } from './accent.ts'
 
 // Kinetic type, canvas 2D. The text is laid out once in setup(); every line gets a clip box
-// (its glyph bounds) and each word — or each whole line — rises out of it with expo.out.
+// (its glyph bounds) and each word — or each whole line — rises out of it with expo.out. The
+// ground is a colour or an image / video from the library (_lib/background.ts).
 //
 // Placement (TEXT_POSITION_PARAMS): at Bottom — the default — the label is a masthead in the top
 // corner and balances the empty top of the frame. At Top and Middle it sits right above the body
@@ -52,7 +54,6 @@ type Params = {
   exit: 'Rise' | 'Fade' | 'None'
   size: number
   weight: 'Regular' | 'Medium'
-  background: string
   color: string
   accent: string
 }
@@ -68,6 +69,7 @@ const textReveal: TemplateFactory = (ctx) => {
   const byWords = p.reveal !== 'Lines'
   const fade = { alpha: 1 }
   let g: OffscreenCanvasRenderingContext2D
+  let background: Background2D
   let body: Block = { font: '', tracking: 0, byWords, lines: [] }
   let label: Block | null = null
 
@@ -142,6 +144,7 @@ const textReveal: TemplateFactory = (ctx) => {
   return {
     async setup() {
       g = ctx.canvas.getContext('2d', { alpha: false })!
+      background = createBackground2D(ctx)
       await ctx.font(FAMILY)
       const weight = p.weight === 'Medium' ? '500' : '400'
       const maxWidth = ctx.width - side * 2
@@ -247,7 +250,8 @@ const textReveal: TemplateFactory = (ctx) => {
       }
     },
 
-    update() {
+    update(t) {
+      background.update(t)
       // Tweened progress → offsets in canvas px: from below the mask (in = 0) up to rest, then
       // out through its top (out = 1).
       for (const b of [label, body]) {
@@ -263,15 +267,15 @@ const textReveal: TemplateFactory = (ctx) => {
     },
 
     render() {
-      g.globalAlpha = 1
-      g.fillStyle = p.background
-      g.fillRect(0, 0, ctx.width, ctx.height)
+      background.draw(g)
       if (fade.alpha <= 0) return
       if (label) drawBlock(label, fade.alpha * LABEL.alpha)
       drawBlock(body, fade.alpha)
     },
 
-    dispose() {},
+    dispose() {
+      background?.dispose()
+    },
   }
 }
 

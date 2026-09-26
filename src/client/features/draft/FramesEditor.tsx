@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'r
 import type { Platform } from '@shared/constants.ts'
 import type { Asset, FrameTemplate, Segment } from '@shared/types.ts'
 import type { Render } from '@shared/template.ts'
-import { frameAssetIds, renderForFrame } from '@shared/frames.ts'
+import { frameAssetIds, frameBackgroundId, renderForFrame } from '@shared/frames.ts'
 import { AnimationExport } from '../../components/AnimationExport/AnimationExport.tsx'
 import { Button } from '../../components/Button/Button.tsx'
 import { PLATFORMS } from '../../lib/platforms.ts'
@@ -17,6 +17,12 @@ import {
 import { useRenders } from '../../lib/queries.ts'
 import { renderTemplate, resolveMedia } from '../../render/client.ts'
 import { templateMeta } from '../../render/templates.ts'
+import {
+  BACKGROUND_MEDIA_KEYS,
+  BACKGROUND_PARAMS,
+  takesBackground,
+  type BackgroundKey,
+} from '../../../../templates/_lib/background.ts'
 import { FrameMedia } from './FrameMedia.tsx'
 import { FrameOptions } from './FrameOptions.tsx'
 import { FramePreview } from './FramePreview.tsx'
@@ -47,6 +53,27 @@ const move = <T,>(list: T[], from: number, to: number) => {
 }
 
 const isVisual = (a: Asset | undefined): a is Asset => a?.kind === 'image' || a?.kind === 'video'
+
+// The frame's background, when its template takes one (templates/_lib/background.ts).
+const backgroundOf = (frame: Segment) => {
+  const meta = frame.template ? templateMeta(frame.template.id) : undefined
+  return meta && takesBackground(meta) ? frameBackgroundId(frame) : null
+}
+
+// A new template choice keeps the background — the image/video and how it sits — when the new
+// template takes one too; everything else starts from the new template's defaults.
+function switchTemplate(current: FrameTemplate | null | undefined, id: string): FrameTemplate {
+  const next = templateMeta(id)
+  if (!current?.background || !next || !takesBackground(next)) return { id }
+  const params = Object.fromEntries(
+    Object.entries(current.params ?? {}).filter(([key]) => key in BACKGROUND_PARAMS)
+  )
+  return {
+    id,
+    background: current.background,
+    ...(Object.keys(params).length ? { params } : {}),
+  }
+}
 
 // Instagram stories (9:16 frames) and carousels (4:5 slides + caption). Each frame has on-screen
 // text and any number of images/videos (in order), rendered by a template with its own options.
@@ -115,6 +142,22 @@ export function FramesEditor(props: Props) {
     const { params: _, ...rest } = template
     update(i, { template: Object.keys(params).length ? { ...rest, params } : rest })
   }
+  // Removing the background also drops its size / position / darken / blur (hidden without one).
+  const setBackground = (i: number, template: FrameTemplate, assetId: string | null) => {
+    if (assetId) return update(i, { template: { ...template, background: { assetId } } })
+    const { background: _, params = {}, ...rest } = template
+    const kept = Object.fromEntries(
+      Object.entries(params).filter(
+        ([key]) => !BACKGROUND_MEDIA_KEYS.includes(key as BackgroundKey)
+      )
+    )
+    update(i, { template: Object.keys(kept).length ? { ...rest, params: kept } : rest })
+  }
+  // Reset: the template's defaults, without a background.
+  const resetOptions = (i: number, template: FrameTemplate) => {
+    const { params: _, background: __, ...rest } = template
+    update(i, { template: rest })
+  }
   const [optionsOpen, setOptionsOpen] = useState<Set<number>>(() => new Set())
   const toggleOptions = (key: number) =>
     setOptionsOpen((open) => {
@@ -154,10 +197,14 @@ export function FramesEditor(props: Props) {
     setRendering((r) => ({ ...r, [i]: 0 }))
     setRenderErrors(({ [i]: _, ...rest }) => rest)
     try {
-      const media = await resolveMedia(frameAssetIds(frame))
+      const backgroundId = backgroundOf(frame)
+      const [media, [background = null] = []] = await Promise.all([
+        resolveMedia(frameAssetIds(frame)),
+        backgroundId ? resolveMedia([backgroundId]) : [],
+      ])
       return await renderTemplate({
         meta,
-        inputs: frameInputs(platform, frame, meta, media),
+        inputs: { ...frameInputs(platform, frame, meta, media), background },
         postId,
         segmentIndex: i,
         onProgress: (done, total) => setRendering((r) => ({ ...r, [i]: done / total })),
@@ -207,14 +254,22 @@ export function FramesEditor(props: Props) {
         const frame = effective[i]!
         const meta = frame.template ? templateMeta(frame.template.id) : undefined
         const settings = Object.keys(meta?.params ?? {}).length
+        const backgroundId = backgroundOf(frame)
         // Stale keys (a setting the template no longer has) don't count as changes.
         const changed = meta
-          ? Object.keys(changedParams(meta, frame.template?.params ?? {})).length
+          ? Object.keys(changedParams(meta, frame.template?.params ?? {})).length +
+            (backgroundId ? 1 : 0)
           : 0
         const optionsShown = optionsOpen.has(keys.current[i]!) && !!meta && settings > 0
         const live = optionsShown && keys.current[i] === liveKey
         const inputs = meta ? frameInputs(platform, frame, meta, []) : undefined
         const { render, current } = status[i]!
+        // Downloads and GIF/WebP exports only for a render of the frame's current template (an
+        // outdated one of another template stays out of reach).
+        const exportable =
+          render?.status === 'ready' && render.url && render.templateId === frame.template?.id
+            ? render
+            : null
         const progress = rendering[i]
         const options = compatibleTemplates(platform, kinds[i]!)
         return (
@@ -242,7 +297,12 @@ export function FramesEditor(props: Props) {
                   count={ids.length}
                   aspect={frames.aspect}
                   params={inputs?.params}
-                  live={live && meta && inputs ? { meta, inputs, assetIds: ids } : undefined}
+                  background={backgroundId ? byId.get(backgroundId) : undefined}
+                  live={
+                    live && meta && inputs
+                      ? { meta, inputs, assetIds: ids, backgroundId }
+                      : undefined
+                  }
                 />
               )}
               <span
@@ -327,7 +387,11 @@ export function FramesEditor(props: Props) {
                   value={frame.template?.id ?? ''}
                   aria-label={`Template for ${frames.noun} ${i + 1}`}
                   onChange={(e) =>
-                    update(i, { template: e.target.value ? { id: e.target.value } : null })
+                    update(i, {
+                      template: e.target.value
+                        ? switchTemplate(segments[i]!.template, e.target.value)
+                        : null,
+                    })
                   }
                 >
                   {options.length ? null : (
@@ -369,14 +433,14 @@ export function FramesEditor(props: Props) {
                 >
                   {current ? 'Re-render' : 'Render'}
                 </Button>
-                {render?.url ? (
-                  <a className="frames-editor__file -p1" href={render.url} download>
+                {exportable ? (
+                  <a className="frames-editor__file -p1" href={exportable.url!} download>
                     ↓
                   </a>
                 ) : null}
               </div>
-              {render?.kind === 'video' && render.status === 'ready' && render.url ? (
-                <AnimationExport render={render} />
+              {exportable?.kind === 'video' ? (
+                <AnimationExport key={exportable.id} render={exportable} />
               ) : null}
               <div className="frames-editor__options flex items-center">
                 <button
@@ -396,7 +460,7 @@ export function FramesEditor(props: Props) {
                   <button
                     type="button"
                     className="frames-editor__reset -p1"
-                    onClick={() => setParams(i, frame.template!, {})}
+                    onClick={() => resetOptions(i, frame.template!)}
                   >
                     Reset
                   </button>
@@ -407,6 +471,12 @@ export function FramesEditor(props: Props) {
                   meta={meta!}
                   params={frame.template.params ?? {}}
                   onChange={(params) => setParams(i, frame.template!, params)}
+                  background={{
+                    assetId: backgroundId,
+                    asset: backgroundId ? byId.get(backgroundId) : undefined,
+                    assets: library,
+                    onChange: (id) => setBackground(i, frame.template!, id),
+                  }}
                 />
               ) : null}
               {renderErrors[i] ? (

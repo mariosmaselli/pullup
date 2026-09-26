@@ -1,10 +1,10 @@
 import type { TemplateFactory } from '@shared/template.ts'
 import { CAPTION_FAMILY, captionCard } from '../_lib/caption.ts'
 
-// A still: one image (Fill = cover, Fit = whole image on the ground colour, see
-// _lib/layout.ts), a large caption in Mario's story type (top / middle / bottom, left or centred),
-// a small label top-left and a date/index top-right. The card itself lives in _lib/caption.ts,
-// shared with video-caption.
+// A still: one image (Fill = cover, Fit = whole image on the ground — a colour or a background
+// image / video, see _lib/layout.ts and _lib/background.ts), a large caption in Mario's story
+// type (top / middle / bottom, left or centred), a small label top-left and a date/index
+// top-right. The card itself lives in _lib/caption.ts, shared with video-caption.
 
 const imageCaption: TemplateFactory = (ctx) => {
   const card = captionCard(ctx)
@@ -19,13 +19,17 @@ const imageCaption: TemplateFactory = (ctx) => {
       card.setup(bitmap.width, bitmap.height)
     },
 
-    update() {},
+    update(t) {
+      card.update(t)
+    },
 
     render() {
       card.draw(g, bitmap)
     },
 
-    dispose() {},
+    dispose() {
+      card.dispose()
+    },
   }
 }
 

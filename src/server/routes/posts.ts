@@ -28,6 +28,8 @@ const revisionBody = z.object({
             id: z.string().regex(/^[a-z0-9-]+$/),
             params: z.record(z.string(), z.unknown()).optional(),
             duration: z.number().min(0).max(600).optional(),
+            // Background image/video (counts as frame media for privacy, see frameMediaIds).
+            background: z.object({ assetId: z.string() }).nullable().optional(),
           })
           .nullable()
           .optional(),

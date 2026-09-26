@@ -1,9 +1,11 @@
 import type { TemplateFactory, TextLayout } from '@shared/template.ts'
+import { createBackground2D, type Background2D } from '../_lib/background.ts'
 import { textBlockY, textLineX, textPlacement } from '../_lib/layout.ts'
 import { drawLayout, STORY_TYPE } from '../_lib/text.ts'
 
 // A still: one frame, drawn with canvas 2D. The body is placed by TEXT_POSITION_PARAMS — by
-// default bottom-left on Mario's story margins.
+// default bottom-left on Mario's story margins — over the background (a colour, or an image /
+// video from the library: _lib/background.ts).
 
 // Design px. The top margin mirrors the bottom one (clear of Instagram's header on stories).
 const MARGIN = { top: STORY_TYPE.bottom, bottom: STORY_TYPE.bottom }
@@ -12,12 +14,12 @@ const MIN_SIZE = 32
 
 const textStory: TemplateFactory = (ctx) => {
   let g: OffscreenCanvasRenderingContext2D
+  let background: Background2D
   let layout: TextLayout
   let size = 0
   let top = 0 // top of the first line box
   let shift: number[] = [] // per line: x offset from the side margin (0 when left-aligned)
   const p = ctx.params as {
-    background: string
     color: string
     size: number
     weight: 'Regular' | 'Medium'
@@ -30,6 +32,7 @@ const textStory: TemplateFactory = (ctx) => {
   return {
     async setup() {
       g = ctx.canvas.getContext('2d', { alpha: false })!
+      background = createBackground2D(ctx)
       await ctx.font('PP Neue Montreal')
       const room = ctx.height - margins.top - margins.bottom
       size = (Number(p.size) || STORY_TYPE.size) * s
@@ -50,11 +53,12 @@ const textStory: TemplateFactory = (ctx) => {
       shift = layout.lines.map((line) => textLineX(ctx.width, line.width, align, side) - side)
     },
 
-    update() {},
+    update(t) {
+      background.update(t)
+    },
 
     render() {
-      g.fillStyle = p.background
-      g.fillRect(0, 0, ctx.width, ctx.height)
+      background.draw(g)
       drawLayout(g, layout, side, top, {
         color: p.color,
         letterSpacing: STORY_TYPE.tracking * size,
@@ -62,7 +66,9 @@ const textStory: TemplateFactory = (ctx) => {
       })
     },
 
-    dispose() {},
+    dispose() {
+      background?.dispose()
+    },
   }
 }
 

@@ -6,7 +6,7 @@ frame-by-frame, so a 6 s 1080×1920 WebGL video renders in about a second.
 
 ```
 templates/
-  _lib/            shared helpers (layout options, caption card, text drawing, Three.js) — not a template
+  _lib/            shared helpers (layout options, backgrounds, caption card, text drawing, Three.js) — not a template
   my-template/
     meta.ts        export const meta: TemplateMeta   ← name, formats, inputs, fonts
     index.ts       export default (ctx) => ({ setup, update, render, dispose })
@@ -63,6 +63,62 @@ Helpers (all in canvas px):
 corner label/index, gradient that follows the caption and only darkens the media, optional per-line
 fade/rise) — `image-caption` and `video-caption` are thin wrappers around it. Share code between
 templates through `_lib/`, never by importing another template's folder.
+
+## Backgrounds: colour, image or video
+
+The ground behind everything a template draws is a colour or an image / video from the library.
+Opt in by spreading `BACKGROUND_PARAMS` from [`_lib/background.ts`](_lib/background.ts) into
+`meta.params` — Pullup then shows the **Background** picker for the template (Templates studio,
+and a frame's Options in the builder) — and draw the background first:
+
+```ts
+params: { ...MEDIA_SIZE_PARAMS, ...TEXT_POSITION_PARAMS, ...BACKGROUND_PARAMS, color: { … } }
+```
+
+| Key                | Control                                                 | Default   |
+| ------------------ | ------------------------------------------------------- | --------- |
+| `background`       | Colour (the same key as in `MEDIA_SIZE_PARAMS`)         | `#101010` |
+| `backgroundFit`    | `Fill` (cover) / `Fit` (whole), like Media size         | `Fill`    |
+| `backgroundScale`  | 0.5–2, multiplies either                                | 1         |
+| `backgroundX`/`Y`  | Position 0–1, like `focusX`/`focusY`                    | 0.5       |
+| `backgroundDarken` | 0–1: black over the image/video (never over the colour) | 0         |
+| `backgroundBlur`   | 0–40 design px, Gaussian sigma                          | 0         |
+
+The chosen image/video arrives as `inputs.background` (a `MediaInput`, stored with the render)
+and, loaded before `setup()`, as `ctx.background`: `{ kind, width, height, image?, video? }` or
+`null` — an upright sRGB `ImageBitmap` (Pullup closes it) or a `VideoLayer`. Don't draw it by
+hand; the helpers place it with `mediaRect`, clamp its edges under the blur (no dark rim), darken
+and blur it the same way everywhere:
+
+```ts
+// canvas 2D — setup():
+background = createBackground2D(ctx)
+// update(t):  background.update(t)       render():  background.draw(g)   // paints the whole frame
+// dispose():  background.dispose()
+
+// three.js — setup() (async: it loads three.js and uploads the first frame):
+background = await createBackgroundThree(ctx, renderer)
+scene.add(background.mesh) // clip-space quad, drawn first and behind everything, any camera
+// update(t):  background.update(t)       render():  background.sync(); renderer.render(scene, camera)
+// dispose():  background.dispose()
+// (or background.render() alone, then your scene with renderer.autoClear = false)
+```
+
+- **Video backgrounds hold their last frame** past the clip's end, like media (a loop would cut
+  visibly mid-reel). `update(t)` seeks them; skip it — and skip drawing the background — when
+  something opaque covers the frame, so the clip isn't decoded for nothing (`_lib/caption.ts`
+  does this for a full-bleed video).
+- The three.js background is painted by the same canvas code and uploaded as an sRGB texture:
+  the look is identical to the 2D one and there is no colour handling to do (its material already
+  ends with `<colorspace_fragment>`; nothing to decode by hand).
+- The blur works at reduced resolution on its own canvases: it's cheap (≈1 ms per video frame at
+  1080×1920) and a render with the same inputs decodes to identical frames every time.
+- `takesBackground(meta)` tells the UI whether a template opted in; `BACKGROUND_MEDIA_KEYS` are
+  the settings shown once an image/video is chosen. With no image/video the colour is drawn
+  exactly as before, so adding backgrounds never changes an existing look.
+- In the builder the choice is kept on the frame (`template.background = { assetId }`), counts as
+  the frame's media for privacy (a private background blocks approval like private slides), and
+  changing it outdates the frame's render.
 
 ## The lifecycle
 

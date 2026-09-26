@@ -9,6 +9,15 @@ import { RenderExportError, type RenderStore } from '../services/renders.ts'
 const ASPECTS = Object.keys(ASPECT_SIZE) as [Aspect, ...Aspect[]]
 const MAX_RENDER_BYTES = 500 * 1024 * 1024
 
+const mediaInput = z.object({
+  assetId: z.string(),
+  kind: z.enum(['image', 'video']),
+  url: z.string(),
+  width: z.number(),
+  height: z.number(),
+  duration: z.number().optional(),
+})
+
 const createBody = z.object({
   templateId: z.string().regex(/^[a-z0-9-]+$/),
   templateVersion: z.number().int().min(1),
@@ -18,21 +27,12 @@ const createBody = z.object({
   inputs: z.object({
     aspect: z.enum(ASPECTS),
     duration: z.number().min(0).max(600),
-    media: z
-      .array(
-        z.object({
-          assetId: z.string(),
-          kind: z.enum(['image', 'video']),
-          url: z.string(),
-          width: z.number(),
-          height: z.number(),
-          duration: z.number().optional(),
-        })
-      )
-      .max(20),
+    media: z.array(mediaInput).max(20),
     text: z.record(z.string(), z.string().max(4000)),
     params: z.record(z.string(), z.unknown()),
     seed: z.number(),
+    // Kept with the render so it stays reproducible (and outdates when the background changes).
+    background: mediaInput.nullable().optional(),
   }),
   postId: z.string().nullable().optional(),
   segmentIndex: z.number().int().min(0).nullable().optional(),

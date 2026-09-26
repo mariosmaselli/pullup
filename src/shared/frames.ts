@@ -1,6 +1,19 @@
 import type { Render } from './template.ts'
 import type { Segment } from './types.ts'
 
+// A frame's background image/video (templates/_lib/background.ts), chosen in its Options and kept
+// with its template choice — `template.background` on FrameTemplate (declared here, next to the
+// helpers that read it).
+export interface FrameBackground {
+  assetId: string
+}
+
+declare module './types.ts' {
+  interface FrameTemplate {
+    background?: FrameBackground | null
+  }
+}
+
 // Most images/videos one Instagram frame may hold (a slideshow of up to 20).
 export const MAX_FRAME_MEDIA = 20
 
@@ -13,11 +26,25 @@ export function frameAssetIds(segment: Segment): string[] {
   return first && !ids.includes(first) ? [first, ...ids] : ids
 }
 
+// The frame's background image/video, if it has one.
+export function frameBackgroundId(segment: Segment): string | null {
+  const id = segment.template?.background?.assetId
+  return typeof id === 'string' && id ? id : null
+}
+
+// Every asset the frame shows: its media, then its background. This is the frame's media for
+// privacy (post_media rows, the private-media check before a post goes public).
+export function frameMediaIds(segment: Segment): string[] {
+  const ids = frameAssetIds(segment)
+  const background = frameBackgroundId(segment)
+  return background && !ids.includes(background) ? [...ids, background] : ids
+}
+
 const sameList = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id, i) => id === b[i])
 
-// Does this render still show this frame? Matched by content (template, text, media, settings),
-// not by position — reordering frames keeps their renders.
+// Does this render still show this frame? Matched by content (template, text, media, background,
+// settings), not by position — reordering frames keeps their renders.
 // A frame without a saved template choice (it uses the editor's default) matches a render of
 // any template, as long as its text and media match.
 export function renderMatchesFrame(render: Render, frame: Segment): boolean {
@@ -29,6 +56,7 @@ export function renderMatchesFrame(render: Render, frame: Segment): boolean {
   // Same media in the same order: adding, removing or reordering media outdates the render.
   const media = inputs.media.map((m) => m.assetId)
   if (!sameList(media, frameAssetIds(frame))) return false
+  if ((inputs.background?.assetId ?? null) !== frameBackgroundId(frame)) return false
   if (frame.template?.duration !== undefined && inputs.duration !== frame.template.duration) {
     return false
   }

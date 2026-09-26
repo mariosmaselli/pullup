@@ -1,9 +1,18 @@
 .frame-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px 16px;
+  gap: 16px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
+}
+
+.frame-options__params {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px 16px;
+}
+
+.frame-options__background {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }

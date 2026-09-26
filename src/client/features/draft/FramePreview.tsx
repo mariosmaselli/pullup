@@ -6,7 +6,8 @@ import {
   type TemplateInputs,
   type TemplateMeta,
 } from '@shared/template.ts'
-import { mediaRect } from '../../../../templates/_lib/layout.ts'
+import { mediaRect, type Rect } from '../../../../templates/_lib/layout.ts'
+import { backgroundOptions } from '../../../../templates/_lib/background.ts'
 import { PreviewController, resolveMedia } from '../../render/client.ts'
 import './FramePreview.scss'
 
@@ -19,9 +20,16 @@ interface Props {
   // The template's settings for this frame (defaults + changes): the stand-in follows the shared
   // media size / text position options (templates/_lib/layout.ts), type size and colours.
   params?: Record<string, unknown>
+  // The frame's background image/video (templates/_lib/background.ts), under the media.
+  background?: Asset
   // Draw the frame with its template, live: the stand-in shows until the first frame is drawn,
   // then every change redraws in place. One live preview at a time (it runs a render worker).
-  live?: { meta: TemplateMeta; inputs: TemplateInputs; assetIds: string[] }
+  live?: {
+    meta: TemplateMeta
+    inputs: TemplateInputs
+    assetIds: string[]
+    backgroundId?: string | null
+  }
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
@@ -30,6 +38,29 @@ const pct = (n: number) => `${(n * 100).toFixed(3)}%`
 
 // Where the video preview rests: late enough that the type has come in, before any exit.
 const restingTime = (duration: number) => duration * 0.4
+
+// A still of an image/video and its size (the poster of a video, else the thumbnail).
+function stillOf(asset: Asset | undefined) {
+  const still =
+    asset?.derivatives.find((d) => d.role === 'poster') ??
+    asset?.derivatives.find((d) => d.role === 'thumb')
+  const url = still?.url ?? asset?.thumbUrl ?? undefined
+  const size =
+    still?.width && still.height
+      ? { w: still.width, h: still.height }
+      : asset?.file?.width && asset.file.height
+        ? { w: asset.file.width, h: asset.file.height }
+        : null
+  return { url, size }
+}
+
+// A rect in canvas px as a share of the frame (for absolutely placed media).
+const placed = (rect: Rect, frame: { width: number; height: number }): CSSProperties => ({
+  left: pct(rect.x / frame.width),
+  top: pct(rect.y / frame.height),
+  width: pct(rect.w / frame.width),
+  height: pct(rect.h / frame.height),
+})
 
 // A quick stand-in for the rendered frame, drawn with CSS: the media sized like the template
 // sizes it (Fill / Fit, scale, position), type in Mario's story style where the template's
@@ -40,18 +71,10 @@ export function FramePreview({
   count = asset ? 1 : 0,
   aspect,
   params = {},
+  background,
   live,
 }: Props) {
-  const still =
-    asset?.derivatives.find((d) => d.role === 'poster') ??
-    asset?.derivatives.find((d) => d.role === 'thumb')
-  const image = still?.url ?? asset?.thumbUrl ?? undefined
-  const size =
-    still?.width && still.height
-      ? { w: still.width, h: still.height }
-      : asset?.file?.width && asset.file.height
-        ? { w: asset.file.width, h: asset.file.height }
-        : null
+  const { url: image, size } = stillOf(asset)
   const position =
     params.textPosition === 'Top' || params.textPosition === 'Middle'
       ? params.textPosition
@@ -68,6 +91,17 @@ export function FramePreview({
       })
     : null
   const typeSize = num(params.typeSize) ?? num(params.size) ?? num(params.titleSize) ?? 84
+  // The background, placed and treated like the template does (blur in cqw: 1cqw = 10.8 px).
+  const ground = stillOf(background)
+  const groundOptions = backgroundOptions(params)
+  const groundRect = ground.size
+    ? mediaRect(frame.width, frame.height, ground.size.w, ground.size.h, {
+        size: groundOptions.fit,
+        scale: groundOptions.scale,
+        focusX: groundOptions.x,
+        focusY: groundOptions.y,
+      })
+    : null
 
   const { rootRef, shown, error, scrub, scrubbing } = useLivePreview(live)
 
@@ -92,6 +126,21 @@ export function FramePreview({
       onPointerLeave={scrub.leave}
       aria-hidden
     >
+      {ground.url ? (
+        <img
+          className="frame-preview__ground"
+          src={ground.url}
+          alt=""
+          data-sized={groundRect ? 'true' : 'false'}
+          style={
+            {
+              ...(groundRect ? placed(groundRect, frame) : {}),
+              '--ground-blur': `${(groundOptions.blur / 10.8).toFixed(3)}cqw`,
+              '--ground-brightness': 1 - groundOptions.darken,
+            } as CSSProperties
+          }
+        />
+      ) : null}
       {image ? (
         <img
           className="frame-preview__media"
@@ -100,12 +149,7 @@ export function FramePreview({
           data-sized={rect ? 'true' : 'false'}
           style={
             rect
-              ? {
-                  left: pct(rect.x / frame.width),
-                  top: pct(rect.y / frame.height),
-                  width: pct(rect.w / frame.width),
-                  height: pct(rect.h / frame.height),
-                }
+              ? placed(rect, frame)
               : {
                   objectPosition: `${(num(params.focusX) ?? 0.5) * 100}% ${(num(params.focusY) ?? 0.5) * 100}%`,
                 }
@@ -138,11 +182,16 @@ function useLivePreview(live: Props['live']) {
   const [epoch, setEpoch] = useState(0)
   const [shown, setShown] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [media, setMedia] = useState<{ key: string; list: MediaInput[] } | null>(null)
+  const [media, setMedia] = useState<{
+    key: string
+    list: MediaInput[]
+    background: MediaInput | null
+  } | null>(null)
   const [scrubbing, setScrubbing] = useState<number | null>(null)
 
   const isLive = !!live
-  const idsKey = live ? live.assetIds.join(',') : ''
+  // The media and the background, as one key (a change resolves both again).
+  const idsKey = live ? JSON.stringify([live.assetIds, live.backgroundId ?? null]) : ''
   const duration = live?.meta.kind === 'video' ? live.inputs.duration : 0
   // Only a real change reloads (the editor rebuilds `live` on every render).
   const inputsKey = live ? JSON.stringify([live.meta.id, live.meta.version, live.inputs]) : ''
@@ -173,11 +222,13 @@ function useLivePreview(live: Props['live']) {
 
   // What the worker reads for the frame's media (a video's proxy is built on first use).
   useEffect(() => {
-    if (!isLive) return
+    if (!isLive || !idsKey) return
     let cancelled = false
-    const ids = idsKey ? idsKey.split(',') : []
-    resolveMedia(ids)
-      .then((list) => !cancelled && setMedia({ key: idsKey, list }))
+    const [ids, backgroundId] = JSON.parse(idsKey) as [string[], string | null]
+    Promise.all([resolveMedia(ids), backgroundId ? resolveMedia([backgroundId]) : []])
+      .then(
+        ([list, [background = null]]) => !cancelled && setMedia({ key: idsKey, list, background })
+      )
       .catch((err: Error) => !cancelled && setError(err.message))
     return () => {
       cancelled = true
@@ -194,7 +245,11 @@ function useLivePreview(live: Props['live']) {
     if (!live || !root || !controller.current || media?.key !== idsKey) return
     // Canvas pixels for the column's width on this screen (capped at the studio's half size).
     const width = Math.min(540, Math.round(root.clientWidth * (window.devicePixelRatio || 1)))
-    controller.current.load(live.meta, { ...live.inputs, media: media.list }, width)
+    controller.current.load(
+      live.meta,
+      { ...live.inputs, media: media.list, background: media.background },
+      width
+    )
     // `inputsKey` stands for `live`.
   }, [inputsKey, media, idsKey, epoch])
 

@@ -3,7 +3,8 @@ import { CAPTION_FAMILY, captionCard, type CaptionFrame } from '../_lib/caption.
 
 // One clip under the "media + caption" card (_lib/caption.ts, shared with image-caption): the
 // video is drawn with canvas 2D each frame (Fill / Fit / scale / position from _lib/layout.ts)
-// and holds its last frame past the clip's end. The caption can fade or rise in, line by line.
+// over the ground (a colour or a background image / video, _lib/background.ts) and holds its last
+// frame past the clip's end. The caption can fade or rise in, line by line.
 
 // When the type comes in (s), and the stagger between caption lines.
 const START = 0.3
@@ -29,7 +30,8 @@ const videoCaption: TemplateFactory = (ctx) => {
       g = ctx.canvas.getContext('2d', { alpha: false })!
       layer = ctx.video(0)
       await ctx.font(CAPTION_FAMILY)
-      card.setup(layer.width, layer.height)
+      // A clip is opaque: when it covers the frame the background isn't drawn (nor decoded).
+      card.setup(layer.width, layer.height, { opaque: true })
 
       for (let i = 0; i < card.lines; i++) lines.push({ alpha: 1, rise: 0 })
       if (animation === 'None') return
@@ -64,6 +66,7 @@ const videoCaption: TemplateFactory = (ctx) => {
 
     update(t) {
       layer.seek(Math.min(t, layer.duration))
+      card.update(t)
       view.lines = lines.map((l) => ({ alpha: l.alpha, rise: l.rise }))
       view.corners = corners.alpha
     },
@@ -72,7 +75,9 @@ const videoCaption: TemplateFactory = (ctx) => {
       card.draw(g, layer.frame, view)
     },
 
-    dispose() {},
+    dispose() {
+      card.dispose()
+    },
   }
 }
 

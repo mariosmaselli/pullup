@@ -16,10 +16,12 @@ import {
   textPlacement,
   type Rect,
 } from './layout.ts'
+import { BACKGROUND_PARAMS, createBackground2D, type Background2D } from './background.ts'
 import { STORY_TYPE } from './text.ts'
 
 // The "media + caption" card shared by image-caption (a still) and video-caption (a clip): one
-// image or video frame sized by MEDIA_SIZE_PARAMS on a plain ground, a large caption in Mario's
+// image or video frame sized by MEDIA_SIZE_PARAMS on a ground (a colour, or a background image /
+// video — BACKGROUND_PARAMS, seen around Fit or scaled-down media), a large caption in Mario's
 // story type placed by TEXT_POSITION_PARAMS over a soft gradient, and a small label / index in the
 // top corners. Canvas 2D; everything is laid out once in setup(), draw() only paints.
 
@@ -48,6 +50,8 @@ export const CAPTION_PARAMS = {
   typeSize: { type: 'number', label: 'Type size', min: 48, max: 140, step: 2, default: 84 },
   color: { type: 'color', label: 'Text', default: '#ffffff' },
   gradient: { type: 'number', label: 'Gradient', min: 0, max: 1, step: 0.05, default: 0.55 },
+  // `background` (the ground colour) keeps its place from MEDIA_SIZE_PARAMS.
+  ...BACKGROUND_PARAMS,
 } satisfies Record<string, ParamSpec>
 
 // Per-frame state of the type (video-caption animates it; the still draws it set).
@@ -176,6 +180,10 @@ export function captionCard(ctx: TemplateContext) {
 
   let rect: Rect = { x: 0, y: 0, w: W, h: H }
   let covers = true // the media covers the whole frame (no ground shows, no clipping needed)
+  let background: Background2D | null = null
+  // The media hides the background completely (it covers the frame and has no transparency):
+  // a background video then isn't decoded at all.
+  let hidden = false
   let captionLayout: TextLayout | null = null
   let captionTracking = 0
   let captionY = 0 // top of the caption's first line box
@@ -189,7 +197,7 @@ export function captionCard(ctx: TemplateContext) {
   const drawScrims = (g: OffscreenCanvasRenderingContext2D) => {
     if (strength <= 0) return
     g.save()
-    if (!covers) {
+    if (!covers && !background?.media) {
       // Only the media needs darkening: the plain ground already sets the type off.
       g.beginPath()
       g.rect(rect.x, rect.y, rect.w, rect.h)
@@ -285,12 +293,15 @@ export function captionCard(ctx: TemplateContext) {
       return captionLayout?.lines.length ?? 0
     },
 
-    // Fonts must be loaded (ctx.font) first. mediaW/H: the source's display size.
-    setup(mediaW: number, mediaH: number) {
+    // Fonts must be loaded (ctx.font) first. mediaW/H: the source's display size; `opaque`: the
+    // source never has transparency (video).
+    setup(mediaW: number, mediaH: number, options: { opaque?: boolean } = {}) {
       rect = mediaRect(W, H, mediaW, mediaH, media)
       const eps = 0.5
       covers =
         rect.x <= eps && rect.y <= eps && rect.x + rect.w >= W - eps && rect.y + rect.h >= H - eps
+      hidden = covers && !!options.opaque
+      background = createBackground2D(ctx)
 
       const measure = new OffscreenCanvas(8, 8).getContext('2d')!
 
@@ -360,6 +371,11 @@ export function captionCard(ctx: TemplateContext) {
       }
     },
 
+    // Seeks a background video (from update()).
+    update(t: number) {
+      if (!hidden) background?.update(t)
+    },
+
     // Paints the whole frame: ground, media (null = not decoded yet), gradient, type.
     draw(
       g: OffscreenCanvasRenderingContext2D,
@@ -368,8 +384,12 @@ export function captionCard(ctx: TemplateContext) {
     ) {
       // The ground shows around Fit media (and under transparent PNGs).
       g.globalAlpha = 1
-      g.fillStyle = p.background
-      g.fillRect(0, 0, W, H)
+      if (background && !hidden) {
+        background.draw(g)
+      } else {
+        g.fillStyle = p.background
+        g.fillRect(0, 0, W, H)
+      }
       if (source) {
         g.imageSmoothingEnabled = true
         g.imageSmoothingQuality = 'high'
@@ -378,6 +398,10 @@ export function captionCard(ctx: TemplateContext) {
       drawScrims(g)
       drawCaption(g, frame)
       drawCorners(g, frame?.corners ?? 1)
+    },
+
+    dispose() {
+      background?.dispose()
     },
   }
 }

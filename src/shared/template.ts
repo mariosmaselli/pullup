@@ -16,6 +16,8 @@
 // - Text: load fonts with ctx.font() and lay text out in setup() (ctx.layoutText); per-frame drawing
 //   of the laid-out words/lines is fine.
 // - Video: call ctx.video(i).seek(localTime) in update(); read `.frame` in render().
+// - Background (ctx.background: a colour, image or video): spread BACKGROUND_PARAMS into
+//   meta.params and draw it with templates/_lib/background.ts, first.
 // - Output is opaque: create WebGL with { alpha: false } / 2D with { alpha: false }, or write alpha 1.
 // - Colour: keep the canvas sRGB (three: renderer.outputColorSpace = SRGBColorSpace).
 // - Lay out in design units: the design space is 1080 px wide; multiply by ctx.scale.
@@ -82,6 +84,9 @@ export interface TemplateInputs {
   text: Record<string, string>
   params: Record<string, unknown>
   seed: number
+  // An image or video from the library drawn behind everything (templates/_lib/background.ts).
+  // Absent / null: the plain `background` colour.
+  background?: MediaInput | null
 }
 
 export interface VideoLayer {
@@ -94,6 +99,18 @@ export interface VideoLayer {
   readonly frame: VideoFrame | null
   // Increments whenever `frame` changes — re-upload textures when it does.
   readonly version: number
+}
+
+// TemplateInputs.background, resolved like media: an image as an upright sRGB bitmap (at most
+// 2160 px on the short side; Pullup closes it — don't), a video as a layer (seek it only when the
+// background is drawn). Draw it with templates/_lib/background.ts rather than by hand.
+export interface BackgroundSource {
+  kind: 'image' | 'video'
+  // Display size of the bitmap / video, for placing it.
+  width: number
+  height: number
+  image?: ImageBitmap
+  video?: VideoLayer
 }
 
 export interface TextLine {
@@ -136,6 +153,8 @@ export interface TemplateContext {
   text: Record<string, string>
   params: Record<string, unknown>
   media: MediaInput[]
+  // The background image/video, loaded before setup(). Null without one.
+  background: BackgroundSource | null
   seed: number
   // Seeded PRNG in [0,1). setup() only.
   random(): number

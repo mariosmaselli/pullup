@@ -5,8 +5,8 @@ export const meta: TemplateMeta = {
   id: 'video-caption',
   name: 'Video + caption',
   description:
-    'One clip — full bleed or fitted on a plain ground — with a large caption (top, middle or bottom) that fades or rises in over a soft gradient, and small corner labels.',
-  version: 1,
+    'One clip — full bleed or fitted on a colour, image or video ground — with a large caption (top, middle or bottom) that fades or rises in over a soft gradient, and small corner labels.',
+  version: 2,
   kind: 'video',
   aspects: ['9:16', '4:5', '1:1'],
   fps: 30,

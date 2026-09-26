@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Platform, PostFormat, PostStatus, SegmentKind } from '@shared/constants.ts'
 import type { Claim, Post, PostDetail, PostRevision, Segment } from '@shared/types.ts'
-import { frameAssetIds, MAX_FRAME_MEDIA } from '@shared/frames.ts'
+import { frameAssetIds, frameMediaIds, MAX_FRAME_MEDIA } from '@shared/frames.ts'
 import type { DB } from '../db/index.ts'
 import { notify } from '../lib/events.ts'
 import { now } from './assets.ts'
@@ -220,16 +220,16 @@ export function writeRevision(db: DB, rev: NewRevision): string {
   return id
 }
 
-// One row per media of every frame (position = its place in the frame), only for assets that
-// still exist: an old revision may point at a deleted asset. The key is (post, asset, frame), so
-// one asset may appear in several frames.
+// One row per media of every frame — its background image/video included, last — (position =
+// its place in the frame), only for assets that still exist: an old revision may point at a
+// deleted asset. The key is (post, asset, frame), so one asset may appear in several frames.
 function syncFrameMedia(db: DB, postId: string, segments: Segment[]) {
   db.prepare('DELETE FROM post_media WHERE post_id = ?').run(postId)
   const existing = new Set(
     (
       db
         .prepare('SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))')
-        .all(JSON.stringify(segments.flatMap(frameAssetIds))) as { id: string }[]
+        .all(JSON.stringify(segments.flatMap(frameMediaIds))) as { id: string }[]
     ).map((r) => r.id)
   )
   const insert = db.prepare(
@@ -237,7 +237,7 @@ function syncFrameMedia(db: DB, postId: string, segments: Segment[]) {
      VALUES (?, ?, ?, ?)`
   )
   segments.forEach((s, i) =>
-    frameAssetIds(s)
+    frameMediaIds(s)
       .filter((id) => existing.has(id))
       .forEach((assetId, position) => insert.run(postId, assetId, i, position))
   )

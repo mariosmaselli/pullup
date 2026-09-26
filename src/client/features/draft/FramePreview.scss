@@ -34,6 +34,23 @@
   }
 }
 
+// The background image/video (its still), under the media: placed like the template places it,
+// blurred and darkened by the frame's options (--ground-blur in cqw, --ground-brightness).
+.frame-preview__ground {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(var(--ground-blur, 0)) brightness(var(--ground-brightness, 1));
+
+  &[data-sized='true'] {
+    inset: auto;
+    max-width: none;
+    object-fit: fill;
+  }
+}
+
 // Sized like the template sizes it (a rect that may run past the frame), or — without the
 // media's dimensions — covering / fitting the frame.
 .frame-preview__media {

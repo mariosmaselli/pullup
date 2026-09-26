@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { Render } from './template.ts'
-import { carryOverFrames, frameAssetIds, renderForFrame, renderMatchesFrame } from './frames.ts'
+import {
+  carryOverFrames,
+  frameAssetIds,
+  frameBackgroundId,
+  frameMediaIds,
+  renderForFrame,
+  renderMatchesFrame,
+} from './frames.ts'
 
-const render = (over: Partial<Render> & { text?: string; media?: string[] } = {}): Render => ({
+const render = (
+  over: Partial<Render> & { text?: string; media?: string[]; background?: string } = {}
+): Render => ({
   id: over.id ?? 'r1',
   templateId: over.templateId ?? 'text-story',
   templateVersion: 1,
@@ -25,6 +34,17 @@ const render = (over: Partial<Render> & { text?: string; media?: string[] } = {}
     text: { body: over.text ?? 'Hello' },
     params: over.inputs?.params ?? { size: 84 },
     seed: 1,
+    ...(over.background
+      ? {
+          background: {
+            assetId: over.background,
+            kind: 'image' as const,
+            url: '',
+            width: 1,
+            height: 1,
+          },
+        }
+      : {}),
   },
   status: over.status ?? 'ready',
   error: null,
@@ -71,6 +91,39 @@ describe('renderMatchesFrame', () => {
     const newer = render({ id: 'new', text: 'Other', segmentIndex: 0 })
     expect(renderForFrame([old, newer], frame, 0)).toEqual({ render: old, current: true })
     expect(renderForFrame([newer], frame, 0)).toEqual({ render: newer, current: false })
+  })
+})
+
+describe('frame backgrounds', () => {
+  const frame = {
+    text: 'Hello',
+    assetId: null,
+    kind: 'text' as const,
+    template: { id: 'text-story', background: { assetId: 'bg' } },
+  }
+
+  it('reads the background, and counts it as the frame’s media (once)', () => {
+    expect(frameBackgroundId(frame)).toBe('bg')
+    expect(frameBackgroundId({ text: '', template: { id: 'text-story' } })).toBeNull()
+    expect(frameBackgroundId({ text: '', template: { id: 'x', background: null } })).toBeNull()
+    expect(frameMediaIds(frame)).toEqual(['bg'])
+    expect(frameMediaIds({ ...frame, assetId: 'a', assetIds: ['a', 'b'] })).toEqual([
+      'a',
+      'b',
+      'bg',
+    ])
+    const own = { ...frame, assetId: 'a', template: { id: 'x', background: { assetId: 'a' } } }
+    expect(frameMediaIds(own)).toEqual(['a'])
+    expect(frameMediaIds({ text: '', assetId: 'a' })).toEqual(['a'])
+  })
+
+  it('outdates a render when the background is added, changed or removed', () => {
+    expect(renderMatchesFrame(render({ background: 'bg' }), frame)).toBe(true)
+    expect(renderMatchesFrame(render(), frame)).toBe(false)
+    expect(renderMatchesFrame(render({ background: 'other' }), frame)).toBe(false)
+    const plain = { ...frame, template: { id: 'text-story' } }
+    expect(renderMatchesFrame(render({ background: 'bg' }), plain)).toBe(false)
+    expect(renderMatchesFrame(render(), plain)).toBe(true)
   })
 })
 
