@@ -1,7 +1,7 @@
 .project-picker__select,
 .project-picker__input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -15,7 +15,7 @@
 
 .project-picker__select {
   appearance: none;
-  padding-right: 32px;
+  padding-right: var(--space-32);
   background-image:
     linear-gradient(45deg, transparent 50%, var(--muted) 50%),
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
@@ -28,15 +28,15 @@
 }
 
 .project-picker__new {
-  gap: 8px;
+  gap: var(--space-8);
 
   .button + .button {
-    margin-left: 4px;
+    margin-left: var(--space-8);
   }
 }
 
 .project-picker__check {
-  gap: 6px;
+  gap: var(--space-8);
   cursor: pointer;
 
   .-meta {

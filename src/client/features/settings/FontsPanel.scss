@@ -1,5 +1,5 @@
 .fonts-panel {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .fonts-panel__list {
@@ -7,8 +7,8 @@
 }
 
 .fonts-panel__row {
-  gap: 16px;
-  padding: 10px 0;
+  gap: var(--space-16);
+  padding: var(--space-8) 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -34,7 +34,7 @@
 }
 
 .fonts-panel__note {
-  margin-top: 4px;
+  margin-top: var(--space-8);
   color: var(--muted);
 }
 

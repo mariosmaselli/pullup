@@ -1,12 +1,16 @@
 .segmented {
-  padding: 3px;
-  gap: 2px;
+  padding: var(--space-8);
   border-radius: var(--radius-m);
   background: var(--surface-muted);
 }
 
+// A fixed height sets the size (like the page-header controls), so options get side padding only.
 .segmented__option {
-  padding: var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border-radius: calc(var(--radius-m) - 3px);
   color: var(--muted);
   white-space: nowrap;

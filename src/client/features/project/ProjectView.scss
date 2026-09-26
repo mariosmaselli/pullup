@@ -1,6 +1,6 @@
 .project-view__back {
   display: inline-block;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-16);
   color: var(--muted);
 
   &:hover {
@@ -10,12 +10,12 @@
 
 .project-view__settings {
   flex-wrap: wrap;
-  gap: 20px 28px;
-  margin: -8px 0 36px;
+  gap: var(--space-24) var(--space-32);
+  margin: calc(-1 * var(--space-8)) 0 var(--space-40);
 }
 
 .project-view__setting {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .project-view__label {
@@ -26,12 +26,15 @@
 // Same height as the segmented controls beside it, so the labels line up.
 .project-view__tags {
   flex-wrap: wrap;
-  gap: 6px;
-  min-height: 35px;
+  gap: var(--space-8);
+  min-height: 40px;
 }
 
 .project-view__tag {
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
@@ -48,6 +51,6 @@
 }
 
 .project-view__note {
-  margin-top: -8px;
+  margin-top: calc(-1 * var(--space-8));
   color: var(--muted);
 }

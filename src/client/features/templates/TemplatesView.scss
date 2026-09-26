@@ -1,7 +1,7 @@
 .templates-view__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .templates-view__card-head {
@@ -9,8 +9,8 @@
 }
 
 .templates-view__card {
-  gap: 10px;
-  padding: 20px;
+  gap: var(--space-8);
+  padding: var(--space-24);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -25,7 +25,10 @@
 }
 
 .templates-view__kind {
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--ink);
   border-radius: 999px;
 }

@@ -1,6 +1,6 @@
 .draft-view__back {
   display: inline-block;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-24);
   color: var(--muted);
 
   &:hover {
@@ -9,12 +9,12 @@
 }
 
 .draft-view__layout {
-  gap: 36px;
+  gap: var(--space-32);
   align-items: flex-start;
 }
 
 .draft-view__label {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-8);
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -28,11 +28,11 @@
   position: sticky;
   top: 0;
   width: 220px;
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .draft-view__source {
-  gap: 6px;
+  gap: var(--space-8);
 
   img {
     width: 100%;
@@ -55,17 +55,20 @@
 }
 
 .draft-view__main {
-  gap: 16px;
+  gap: var(--space-16);
   min-width: 0;
   max-width: 640px;
 }
 
 .draft-view__siblings {
-  gap: 4px;
+  gap: var(--space-8);
 }
 
 .draft-view__sibling {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-16);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -84,34 +87,37 @@
 }
 
 .draft-view__header {
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .draft-view__edit-actions {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .draft-view__warning {
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);
 }
 
 .draft-view__revise {
-  margin-top: 12px;
-  padding-top: 20px;
+  margin-top: var(--space-16);
+  padding-top: var(--space-24);
   border-top: 1px solid var(--line);
 }
 
 .draft-view__quick {
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
 }
 
 .draft-view__chip {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-16);
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
@@ -128,8 +134,8 @@
 }
 
 .draft-view__instruction {
-  gap: 8px;
-  padding: 6px 6px 6px 14px;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -149,15 +155,14 @@
   position: sticky;
   top: 0;
   width: 280px;
-  gap: 24px;
+  gap: var(--space-24);
 }
 
 .draft-view__claims {
-  gap: 8px;
+  gap: var(--space-8);
 
   li {
-    gap: 2px;
-    padding-left: 10px;
+    padding-left: var(--space-8);
     border-left: 2px solid var(--line);
 
     .-meta {
@@ -181,15 +186,15 @@
 .draft-view__questions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 6px;
-  padding-left: 16px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+  padding-left: var(--space-16);
 }
 
 .draft-view__history {
   li {
-    gap: 8px;
-    padding: 4px 0;
+    gap: var(--space-8);
+    padding: var(--space-8) 0;
     border-bottom: 1px solid var(--line);
 
     &[data-current='true'] > .-p1 {
@@ -199,7 +204,10 @@
 }
 
 .draft-view__status {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border-radius: 999px;
   color: var(--ink);
   background: var(--surface-muted);
@@ -218,7 +226,7 @@
 // Restore (archived / discarded) and shelve (archive / discard) actions
 .draft-view__restore,
 .draft-view__shelve {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .draft-view__status[data-status='archived'],
@@ -228,7 +236,7 @@
 
 // A "confirm before posting" claim Mario can tick off.
 .draft-view__confirm {
-  gap: 6px;
+  gap: var(--space-8);
   cursor: pointer;
 
   input {

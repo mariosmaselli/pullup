@@ -1,13 +1,19 @@
+// A min-height (not padding) keeps the empty state roomy: spacing stops at 40px.
 .empty-state {
-  gap: 10px;
-  padding: 96px 24px;
+  justify-content: center;
+  gap: var(--space-8);
+  min-height: 256px;
+  padding: var(--space-40) var(--space-24);
   border: 1px dashed var(--line);
   border-radius: var(--radius-l);
   text-align: center;
 }
 
 .empty-state__milestone {
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border-radius: 999px;
   color: var(--muted);
   background: var(--surface-muted);

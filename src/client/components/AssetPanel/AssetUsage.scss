@@ -1,5 +1,5 @@
 .asset-usage {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .asset-usage__heading {
@@ -12,14 +12,13 @@
 }
 
 .asset-usage__list {
-  gap: 4px;
+  gap: var(--space-8);
   padding: 0;
   list-style: none;
 }
 
 .asset-usage__item {
-  gap: 1px;
-  padding: 7px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   transition: border-color var(--duration) var(--ease-out);

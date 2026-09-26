@@ -1,6 +1,6 @@
 .ai-key {
-  gap: 8px;
-  padding: 12px 0;
+  gap: var(--space-8);
+  padding: var(--space-16) 0;
 
   code {
     font-family: var(--font-mono);
@@ -8,17 +8,17 @@
   }
 
   .button + .button {
-    margin-left: 4px;
+    margin-left: var(--space-8);
   }
 }
 
 .ai-key__row {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .ai-key__input {
   min-width: 0;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -36,7 +36,7 @@
   display: inline-block;
   width: 7px;
   height: 7px;
-  margin-right: 4px;
+  margin-right: var(--space-8);
   border-radius: 50%;
   background: #3aa66a;
   vertical-align: 1px;

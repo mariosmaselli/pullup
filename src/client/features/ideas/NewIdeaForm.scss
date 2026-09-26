@@ -1,8 +1,8 @@
 .new-idea-form {
-  gap: 16px;
+  gap: var(--space-16);
   max-width: 980px;
-  margin-bottom: 32px;
-  padding: 24px;
+  margin-bottom: var(--space-32);
+  padding: var(--space-24);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -19,7 +19,7 @@
 
 .new-idea-form__input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -42,21 +42,24 @@
 .new-idea-form__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 16px 28px;
+  gap: var(--space-16) var(--space-32);
 }
 
 .new-idea-form__field {
-  gap: 6px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
 .new-idea-form__chips {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .new-idea-form__chip {
-  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -83,12 +86,11 @@
 
 .new-idea-form__scope {
   max-width: 280px;
-  margin-bottom: 2px;
 }
 
 .new-idea-form__actions {
-  gap: 6px;
-  padding-top: 4px;
+  gap: var(--space-8);
+  padding-top: var(--space-8);
 }
 
 .new-idea-form__error {

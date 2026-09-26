@@ -1,23 +1,26 @@
 .idea-card {
-  gap: 28px;
-  padding: 24px;
+  gap: var(--space-32);
+  padding: var(--space-24);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
 }
 
 .idea-card__body {
-  gap: 10px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
 .idea-card__chips {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .idea-card__chip {
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -45,8 +48,8 @@
 }
 
 .idea-card__questions {
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--signal) 7%, transparent);
 
@@ -56,12 +59,12 @@
   }
 
   ol {
-    gap: 10px;
+    gap: var(--space-8);
     list-style: none;
   }
 
   li {
-    gap: 4px;
+    gap: var(--space-8);
   }
 }
 
@@ -69,7 +72,7 @@
 .idea-card__direction {
   width: 100%;
   min-height: 32px;
-  padding: 6px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -87,13 +90,9 @@
   }
 }
 
-.idea-card__direction {
-  margin-top: 2px;
-}
-
 .idea-card__drafts {
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: var(--space-8);
 
   .-meta {
     text-transform: uppercase;
@@ -112,17 +111,20 @@
 }
 
 .idea-card__confirm {
-  margin-right: 6px;
+  margin-right: var(--space-8);
 }
 
 .idea-card__platforms {
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
 }
 
 .idea-card__platform {
-  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -144,18 +146,17 @@
 
 .idea-card__actions {
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-8);
   min-height: 28px;
-  margin-top: 2px;
 }
 
 .idea-card__sources {
   width: 160px;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .idea-card__source {
-  gap: 4px;
+  gap: var(--space-8);
   color: var(--muted);
 
   img {

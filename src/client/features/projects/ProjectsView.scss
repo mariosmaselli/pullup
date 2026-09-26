@@ -1,7 +1,7 @@
 .projects-view__form {
-  gap: 10px;
-  margin-bottom: 32px;
-  padding: 10px 10px 10px 16px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-32);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -17,7 +17,7 @@
 }
 
 .projects-view__check {
-  gap: 6px;
+  gap: var(--space-8);
   color: var(--muted);
   cursor: pointer;
 }
@@ -25,5 +25,5 @@
 .projects-view__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 32px 24px;
+  gap: var(--space-32) var(--space-24);
 }

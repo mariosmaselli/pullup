@@ -1,5 +1,5 @@
 .asset-tags {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .asset-tags__label {
@@ -9,9 +9,9 @@
 
 .asset-tags__box {
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-8);
   min-height: 38px;
-  padding: 5px 6px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -23,8 +23,8 @@
 }
 
 .asset-tags__tag {
-  gap: 2px;
-  padding: 1px 4px 1px 9px;
+  height: 20px;
+  padding: 0 0 0 var(--space-8);
   border-radius: 999px;
   background: var(--surface-muted);
 }
@@ -44,7 +44,7 @@
 
 .asset-tags__input {
   min-width: 90px;
-  padding: 2px 4px;
+  padding: 0 var(--space-8);
   background: transparent;
   outline: none;
 

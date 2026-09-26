@@ -1,9 +1,9 @@
 .text-post {
-  gap: 12px;
+  gap: var(--space-16);
 }
 
 .text-post__segment {
-  padding: 14px 16px 8px;
+  padding: var(--space-16) var(--space-16) var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -23,20 +23,20 @@
 
 // Attached media (X / LinkedIn), under the first post.
 .text-post__media {
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+  padding-top: var(--space-8);
   border-top: 1px solid var(--line);
 }
 
 .text-post__thumbs {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-8);
   list-style: none;
 }
 
 .text-post__thumb {
-  gap: 2px;
+  gap: var(--space-8);
   width: 120px;
 
   img,
@@ -55,11 +55,15 @@
 }
 
 .text-post__thumb-actions {
-  gap: 2px;
+  gap: var(--space-8);
 
   button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 24px;
-    padding: 1px 6px;
+    height: 24px;
+    padding: 0 var(--space-8);
     border: 1px solid var(--line);
     border-radius: var(--radius-s);
     color: var(--ink-soft);
@@ -78,7 +82,7 @@
 }
 
 .text-post__media-bar {
-  gap: 12px;
+  gap: var(--space-16);
   color: var(--muted);
 }
 
@@ -87,7 +91,7 @@
 }
 
 .text-post__footer {
-  margin-top: 6px;
+  margin-top: var(--space-8);
   color: var(--muted);
 
   [data-over='true'] {
@@ -96,8 +100,8 @@
 }
 
 .text-post__fold {
-  margin: 4px 0 6px;
-  padding: 8px 10px;
+  margin: var(--space-8) 0;
+  padding: var(--space-8);
   border-radius: var(--radius-m);
   color: var(--ink-soft);
   background: var(--surface-muted);

@@ -1,11 +1,11 @@
 .backups-panel {
-  gap: 8px;
-  padding: 12px 0;
+  gap: var(--space-8);
+  padding: var(--space-16) 0;
   border-top: 1px solid var(--line);
 }
 
 .backups-panel__row {
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .backups-panel__folder {

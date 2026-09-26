@@ -1,8 +1,8 @@
 .log-post-panel {
   max-width: 980px;
-  gap: 16px;
-  margin-bottom: 28px;
-  padding: 16px 18px;
+  gap: var(--space-16);
+  margin-bottom: var(--space-32);
+  padding: var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -18,7 +18,7 @@
 }
 
 .log-post-panel__field {
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 
   .segmented {
@@ -28,7 +28,7 @@
 
 .log-post-panel__row {
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .log-post-panel__project {
@@ -37,7 +37,7 @@
 
 .log-post-panel__input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -52,12 +52,11 @@
 .log-post-panel__picker {
   max-height: 260px;
   overflow-y: auto;
-  padding: 2px;
 }
 
 .log-post-panel__notice {
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);

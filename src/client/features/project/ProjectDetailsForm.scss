@@ -1,13 +1,13 @@
 .project-details-form {
-  gap: 14px;
+  gap: var(--space-16);
   max-width: 720px;
-  padding-bottom: 24px;
-  margin-bottom: 32px;
+  padding-bottom: var(--space-24);
+  margin-bottom: var(--space-32);
   border-bottom: 1px solid var(--line);
 }
 
 .project-details-form__field {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .project-details-form__label {
@@ -18,7 +18,7 @@
 .project-details-form__input,
 .project-details-form__tags {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -41,14 +41,15 @@ textarea.project-details-form__input {
 
 .project-details-form__tags {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-8);
   min-height: 40px;
-  padding: 6px 8px;
+  padding: var(--space-8);
 }
 
 .project-details-form__tag {
-  gap: 4px;
-  padding: 1px 4px 1px 10px;
+  gap: var(--space-8);
+  height: 20px;
+  padding: 0 0 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface-muted);
@@ -69,7 +70,7 @@ textarea.project-details-form__input {
 
 .project-details-form__tag-input {
   min-width: 120px;
-  padding: 2px 4px;
+  padding: 0 var(--space-8);
   background: transparent;
   outline: none;
 
@@ -79,7 +80,7 @@ textarea.project-details-form__input {
 }
 
 .project-details-form__actions {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .project-details-form__error {

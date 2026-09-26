@@ -1,7 +1,7 @@
 .inbox-issues {
-  gap: 12px;
-  margin-bottom: 32px;
-  padding: 16px;
+  gap: var(--space-16);
+  margin-bottom: var(--space-32);
+  padding: var(--space-16);
   border: 1px solid color-mix(in srgb, var(--signal) 30%, var(--line));
   border-radius: var(--radius-l);
   background: color-mix(in srgb, var(--signal) 4%, var(--surface));
@@ -13,31 +13,26 @@
   }
 }
 
-.inbox-issues__header {
-  gap: 2px;
-}
-
 .inbox-issues__muted {
   color: var(--muted);
 }
 
 .inbox-issues__list {
-  gap: 6px;
+  gap: var(--space-8);
   padding: 0;
   list-style: none;
 }
 
 .inbox-issues__item {
   flex-wrap: wrap;
-  gap: 4px 16px;
-  padding: 10px 8px 10px 12px;
+  gap: var(--space-8) var(--space-16);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   background: var(--surface);
 }
 
 .inbox-issues__body {
   flex: 1 1 260px;
-  gap: 2px;
 }
 
 .inbox-issues__name {

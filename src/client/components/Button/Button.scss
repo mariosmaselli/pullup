@@ -2,8 +2,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 7px 14px;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   white-space: nowrap;
   transition:
@@ -13,7 +13,8 @@
     opacity var(--duration) var(--ease-out);
 
   &.-size-s {
-    padding: 4px 10px;
+    min-height: 28px;
+    padding: 0 var(--space-8);
   }
 
   &:disabled {

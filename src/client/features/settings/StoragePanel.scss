@@ -1,5 +1,5 @@
 .storage-panel {
-  gap: 20px;
+  gap: var(--space-24);
 
   a {
     text-decoration: underline;
@@ -17,8 +17,8 @@
 }
 
 .storage-panel__row {
-  gap: 16px;
-  padding: 10px 0;
+  gap: var(--space-16);
+  padding: var(--space-8) 0;
   border-bottom: 1px solid var(--line);
 
   &.-total {
@@ -51,11 +51,11 @@
 }
 
 .storage-panel__cleanup {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .storage-panel__cleanup-row {
-  gap: 16px;
+  gap: var(--space-16);
   min-height: 28px;
 }
 
@@ -64,7 +64,7 @@
 }
 
 .storage-panel__actions {
-  gap: 4px;
+  gap: var(--space-8);
 }
 
 .storage-panel__message {

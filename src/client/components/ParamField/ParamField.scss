@@ -1,5 +1,5 @@
 .param-field {
-  gap: 6px;
+  gap: var(--space-8);
 
   input[type='range'] {
     width: 100%;
@@ -13,7 +13,7 @@
 }
 
 .param-field__color {
-  gap: 8px;
+  gap: var(--space-8);
 
   input {
     width: 36px;
@@ -31,7 +31,7 @@
 }
 
 .param-field__select {
-  padding: 6px 8px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);

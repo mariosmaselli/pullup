@@ -1,6 +1,6 @@
 .frame-options {
-  gap: 16px;
-  padding: 12px;
+  gap: var(--space-16);
+  padding: var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -10,25 +10,25 @@
 .frame-options__text {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 16px;
-  padding-bottom: 12px;
+  gap: var(--space-8) var(--space-16);
+  padding-bottom: var(--space-16);
   border-bottom: 1px solid var(--line);
 }
 
 .frame-options__field {
-  gap: 4px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
 .frame-options__label {
-  gap: 8px;
+  gap: var(--space-8);
   color: var(--muted);
   text-transform: uppercase;
 }
 
 .frame-options__input {
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -47,10 +47,10 @@
 .frame-options__params {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px 16px;
+  gap: var(--space-16);
 }
 
 .frame-options__background {
-  padding-top: 12px;
+  padding-top: var(--space-16);
   border-top: 1px solid var(--line);
 }

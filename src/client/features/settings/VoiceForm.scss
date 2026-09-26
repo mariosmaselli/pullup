@@ -1,11 +1,11 @@
 .voice-form {
-  gap: 10px;
+  gap: var(--space-8);
   max-width: 760px;
 }
 
 .voice-form__input {
   width: 100%;
-  padding: 12px 14px;
+  padding: var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -20,10 +20,10 @@
 }
 
 .voice-form__footer {
-  gap: 16px;
+  gap: var(--space-16);
 
   .button + .button {
-    margin-left: 4px;
+    margin-left: var(--space-8);
   }
 }
 
@@ -33,7 +33,7 @@
 }
 
 .voice-form__saved {
-  margin-right: 8px;
+  margin-right: var(--space-8);
   color: var(--muted);
 }
 

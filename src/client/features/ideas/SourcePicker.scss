@@ -1,11 +1,11 @@
 .source-picker {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .source-picker__search {
   width: 100%;
   max-width: 320px;
-  padding: 6px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -26,14 +26,13 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   align-content: start;
-  gap: 10px;
+  gap: var(--space-8);
   height: 248px;
-  padding: 2px;
   overflow-y: auto;
 }
 
 .source-picker__item {
-  gap: 4px;
+  gap: var(--space-8);
   min-width: 0;
   text-align: left;
   color: var(--muted);
@@ -68,7 +67,7 @@
 }
 
 .source-picker__text {
-  padding: 6px;
+  padding: var(--space-8);
   overflow: hidden;
   color: var(--ink-soft);
   word-break: break-word;

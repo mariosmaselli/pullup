@@ -1,5 +1,5 @@
 .asset-card {
-  gap: 10px;
+  gap: var(--space-8);
   min-width: 0;
   text-align: left;
 
@@ -78,7 +78,7 @@
 
 .asset-card__note {
   height: 100%;
-  padding: 16px 16px 0;
+  padding: var(--space-16) var(--space-16) 0;
   overflow: hidden;
   color: var(--ink-soft);
   background: var(--surface);
@@ -116,7 +116,10 @@
   position: absolute;
   right: 8px;
   bottom: 8px;
-  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border-radius: var(--radius-s);
   color: #fff;
   background: rgb(0 0 0 / 0.55);
@@ -124,7 +127,6 @@
 }
 
 .asset-card__meta {
-  gap: 2px;
   min-width: 0;
 }
 

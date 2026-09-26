@@ -2,12 +2,12 @@
   max-width: 760px;
 
   & + & {
-    margin-top: 48px;
+    margin-top: var(--space-40);
   }
 }
 
 .settings-view__heading {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-16);
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -17,8 +17,8 @@
 }
 
 .settings-view__row {
-  gap: 24px;
-  padding: 12px 0;
+  gap: var(--space-24);
+  padding: var(--space-16) 0;
   border-bottom: 1px solid var(--line);
 }
 

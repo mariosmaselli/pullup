@@ -1,6 +1,8 @@
 .quick-capture {
   width: min(560px, calc(100vw - 32px));
-  margin: 18vh auto auto;
+  // Placed by offset, not margin: 18vh down, centred across.
+  inset: 18vh 0 auto;
+  margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   color: var(--ink);
@@ -28,7 +30,7 @@
 
 .quick-capture__input {
   width: 100%;
-  padding: 20px 22px 8px;
+  padding: var(--space-24) var(--space-24) var(--space-8);
   resize: none;
   outline: none;
 
@@ -38,11 +40,11 @@
 }
 
 .quick-capture__footer {
-  gap: 12px;
-  padding: 10px 12px 12px 22px;
+  gap: var(--space-16);
+  padding: var(--space-8) var(--space-16) var(--space-16) var(--space-24);
 
   .button + .button {
-    margin-left: 6px;
+    margin-left: var(--space-8);
   }
 }
 

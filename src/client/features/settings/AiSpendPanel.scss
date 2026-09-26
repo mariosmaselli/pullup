@@ -1,6 +1,6 @@
 .ai-spend-panel {
-  gap: 12px;
-  padding-top: 12px;
+  gap: var(--space-16);
+  padding-top: var(--space-16);
 
   strong {
     color: var(--ink);
@@ -9,7 +9,7 @@
 }
 
 .ai-spend-panel__row {
-  gap: 16px;
+  gap: var(--space-16);
   min-height: 28px;
 }
 
@@ -18,7 +18,7 @@
 }
 
 .ai-spend-panel__heading {
-  margin-top: 8px;
+  margin-top: var(--space-8);
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -35,7 +35,7 @@
 
   th,
   td {
-    padding: 8px 0;
+    padding: var(--space-8) 0;
     border-bottom: 1px solid var(--line);
     text-align: right;
     vertical-align: top;
@@ -48,7 +48,7 @@
 
     & + th,
     & + td {
-      padding-left: 16px;
+      padding-left: var(--space-16);
     }
   }
 

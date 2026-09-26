@@ -1,7 +1,7 @@
 .media-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .media-picker__item {
@@ -45,7 +45,7 @@
   position: absolute;
   right: 4px;
   bottom: 4px;
-  padding: 0 4px;
+  padding: 0 var(--space-8);
   border-radius: 3px;
   color: #fff;
   background: rgb(0 0 0 / 0.6);

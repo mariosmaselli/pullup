@@ -1,5 +1,5 @@
 .project-card {
-  gap: 10px;
+  gap: var(--space-8);
   min-width: 0;
 
   &[data-status='archived'],
@@ -31,7 +31,6 @@
 }
 
 .project-card__meta {
-  gap: 2px;
   min-width: 0;
 }
 
@@ -43,8 +42,11 @@
 
 .project-card__tag {
   flex-shrink: 0;
-  margin-left: 8px;
-  padding: 1px 6px;
+  margin-left: var(--space-8);
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);

@@ -1,6 +1,6 @@
 .template-studio__back {
   display: inline-block;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-24);
   color: var(--muted);
 
   &:hover {
@@ -9,7 +9,7 @@
 }
 
 .template-studio__layout {
-  gap: 32px;
+  gap: var(--space-32);
   align-items: flex-start;
 }
 
@@ -24,15 +24,15 @@
 
 .template-studio__inputs {
   width: 300px;
-  gap: 18px;
+  gap: var(--space-16);
 
   header {
-    gap: 6px;
+    gap: var(--space-8);
   }
 }
 
 .template-studio__field {
-  gap: 6px;
+  gap: var(--space-8);
 
   input[type='range'] {
     width: 100%;
@@ -44,12 +44,12 @@
 .template-studio__labels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-16);
 }
 
 .template-studio__input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -62,7 +62,7 @@
 }
 
 .template-studio__stage {
-  gap: 12px;
+  gap: var(--space-16);
   min-width: 0;
 }
 
@@ -108,13 +108,13 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--space-24);
   color: #b8b6b0;
   text-align: center;
 }
 
 .template-studio__transport {
-  gap: 10px;
+  gap: var(--space-8);
   width: min(100%, 520px);
 
   input[type='range'] {
@@ -124,11 +124,11 @@
 
 .template-studio__output {
   width: 260px;
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .template-studio__result {
-  gap: 8px;
+  gap: var(--space-8);
 
   video,
   img {
@@ -144,7 +144,7 @@
 }
 
 .template-studio__warnings {
-  padding: 8px 12px 8px 26px;
+  padding: var(--space-8) var(--space-16) var(--space-8) var(--space-24);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);
@@ -155,15 +155,15 @@
 }
 
 .template-studio__error {
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);
 }
 
 .template-studio__renders li {
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-8);
+  padding: var(--space-8) 0;
   border-bottom: 1px solid var(--line);
 }
 

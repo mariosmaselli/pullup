@@ -1,17 +1,17 @@
 .frame-media {
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
 // One line, always the height of a small button — no jump between text-only and media frames.
 .frame-media__row {
-  gap: 6px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 30px;
 }
 
 .frame-media__strip {
-  gap: 4px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -63,7 +63,6 @@
   bottom: 1px;
   left: 1px;
   min-width: 13px;
-  padding: 0 2px;
   border-radius: 3px;
   font-size: 9px;
   line-height: 13px;
@@ -116,8 +115,8 @@
 }
 
 .frame-media__panel {
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-8);
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -130,12 +129,12 @@
 }
 
 .frame-media__controls {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .frame-media__all {
-  gap: 6px;
-  margin-right: 4px;
+  gap: var(--space-8);
+  margin-right: var(--space-8);
   color: var(--muted);
   cursor: pointer;
 

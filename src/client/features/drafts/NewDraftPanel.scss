@@ -1,8 +1,8 @@
 .new-draft-panel {
   max-width: 980px;
-  gap: 16px;
-  margin-bottom: 28px;
-  padding: 16px 18px;
+  gap: var(--space-16);
+  margin-bottom: var(--space-32);
+  padding: var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -14,25 +14,31 @@
 }
 
 .new-draft-panel__field {
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
+
+  // A fieldset's legend isn't a flex item, so the gap above doesn't reach it.
+  > legend {
+    margin-bottom: var(--space-8);
+  }
 }
 
 .new-draft-panel__row {
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .new-draft-panel__platforms {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .new-draft-panel__platform {
-  gap: 6px;
-  padding: 5px 12px;
+  gap: var(--space-8);
+  height: 32px;
+  padding: 0 var(--space-16);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -54,7 +60,7 @@
 
 .new-draft-panel__select {
   width: 100%;
-  padding: 8px 32px 8px 10px;
+  padding: var(--space-8) var(--space-32) var(--space-8) var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   outline: none;

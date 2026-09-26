@@ -1,7 +1,7 @@
 .trash-view__bar {
-  gap: 4px 16px;
+  gap: var(--space-8) var(--space-16);
   min-height: 28px;
-  margin: -16px 0 16px;
+  margin: calc(-1 * var(--space-16)) 0 var(--space-16);
 }
 
 .trash-view__warning {
@@ -9,7 +9,7 @@
 }
 
 .trash-view__confirm {
-  gap: 4px;
+  gap: var(--space-8);
 }
 
 .trash-view__notice {
@@ -28,17 +28,17 @@
 }
 
 .trash-view__row {
-  gap: 20px;
-  padding: 14px 4px;
+  gap: var(--space-24);
+  padding: var(--space-16) var(--space-8);
   border-bottom: 1px solid var(--line);
 }
 
 .trash-view__main {
-  gap: 3px;
+  gap: var(--space-8);
 }
 
 .trash-view__title {
-  gap: 12px;
+  gap: var(--space-16);
 }
 
 .trash-view__kind {
@@ -72,7 +72,7 @@
 
 .trash-view__folder {
   display: block;
-  margin-top: 16px;
+  margin-top: var(--space-16);
   color: var(--muted);
   overflow-wrap: anywhere;
 }

@@ -1,10 +1,10 @@
 .frames-editor {
-  gap: 12px;
+  gap: var(--space-16);
 }
 
 .frames-editor__frame {
-  gap: 16px;
-  padding: 12px;
+  gap: var(--space-16);
+  padding: var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -20,7 +20,7 @@
 }
 
 .frames-editor__fields {
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -31,7 +31,7 @@
 
 .frames-editor__text {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -44,9 +44,11 @@
   }
 }
 
+// The template row's controls are the height of the small Render button beside them.
 .frames-editor__media {
   max-width: 70%;
-  padding: 5px 8px;
+  height: 28px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--bg);
@@ -54,7 +56,7 @@
 }
 
 .frames-editor__count {
-  margin-right: 6px;
+  margin-right: var(--space-8);
   color: var(--muted);
 
   &[data-over='true'] {
@@ -67,19 +69,19 @@
 }
 
 .frames-editor__caption {
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
 }
 
 .frames-editor__toolbar {
-  gap: 12px;
-  padding: 8px 12px;
+  gap: var(--space-16);
+  padding: var(--space-8) var(--space-16);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
 
   .button {
-    margin-right: 10px;
+    margin-right: var(--space-8);
   }
 }
 
@@ -99,7 +101,7 @@
 }
 
 .frames-editor__preview {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .frames-editor__render {
@@ -135,16 +137,17 @@
 }
 
 .frames-editor__template {
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .frames-editor__duration {
-  gap: 4px;
+  gap: var(--space-8);
   color: var(--muted);
 
   input {
     width: 56px;
-    padding: 4px 6px;
+    height: 28px;
+    padding: 0 var(--space-8);
     border: 1px solid var(--line);
     border-radius: var(--radius-s);
     background: var(--bg);
@@ -165,12 +168,12 @@
 
 // Always one line under the template row, so a frame doesn't change height until Options opens.
 .frames-editor__options {
-  gap: 10px;
+  gap: var(--space-8);
   min-height: 20px;
 }
 
 .frames-editor__options-toggle {
-  gap: 6px;
+  gap: var(--space-8);
   color: var(--muted);
 
   &:hover:not(:disabled),

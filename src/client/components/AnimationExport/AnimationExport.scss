@@ -1,10 +1,10 @@
 .animation-export {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .animation-export__toggle {
   align-self: flex-start;
-  gap: 6px;
+  gap: var(--space-8);
   color: var(--muted);
 
   &:hover,
@@ -27,8 +27,8 @@
 }
 
 .animation-export__panel {
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-8);
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -50,7 +50,7 @@
 }
 
 .animation-export__progress {
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .animation-export__track {
@@ -77,22 +77,21 @@
 }
 
 .animation-export__warnings {
-  padding: 8px 12px 8px 26px;
+  padding: var(--space-8) var(--space-16) var(--space-8) var(--space-24);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);
 }
 
 .animation-export__error {
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-m);
   color: var(--signal);
   background: color-mix(in srgb, var(--signal) 8%, transparent);
 }
 
 .animation-export__made {
-  gap: 2px;
-  padding-top: 6px;
+  padding-top: var(--space-8);
   border-top: 1px solid var(--line);
 }
 
