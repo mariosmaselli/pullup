@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { useCapture } from '../../lib/capture.tsx'
+import { useProjects } from '../../lib/queries.ts'
 import { DropOverlay } from '../DropOverlay/DropOverlay.tsx'
 import { QuickCapture } from '../QuickCapture/QuickCapture.tsx'
 import { CaptureTray } from '../CaptureTray/CaptureTray.tsx'
@@ -12,13 +14,25 @@ const carriesCapture = (e: DragEvent) =>
   !!e.dataTransfer &&
   (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/uri-list'))
 
+// The project page being viewed, if any: captures made there start in that project.
+function useViewedProject() {
+  const slug = useLocation({
+    select: (l) => /^\/projects\/([^/]+)\/?$/.exec(l.pathname)?.[1] ?? null,
+  })
+  const { data: projects } = useProjects()
+  return slug ? (projects?.find((p) => p.slug === decodeURIComponent(slug)) ?? null) : null
+}
+
 // App-wide capture: drop files or links anywhere, paste anywhere, ⌘K for quick capture.
 export function GlobalCapture() {
-  const { uploadFiles, captureText, setQuickCaptureOpen } = useCapture()
+  const { uploadFiles, captureText, setQuickCaptureOpen, setCaptureProjectId } = useCapture()
+  const project = useViewedProject()
   const [dragging, setDragging] = useState(false)
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   // Drags that start inside Pullup (e.g. an image in the panel) are not captures.
   const internalDrag = useRef(false)
+
+  useEffect(() => setCaptureProjectId(project?.id ?? null), [project?.id, setCaptureProjectId])
 
   useEffect(() => {
     const isCapture = (e: DragEvent) => !internalDrag.current && carriesCapture(e)
@@ -89,8 +103,8 @@ export function GlobalCapture() {
 
   return (
     <>
-      <DropOverlay visible={dragging} />
-      <QuickCapture />
+      <DropOverlay visible={dragging} projectName={project?.name ?? null} />
+      <QuickCapture projectName={project?.name ?? null} />
       <CaptureTray />
     </>
   )

@@ -160,3 +160,26 @@
     margin-left: 6px;
   }
 }
+
+.asset-panel__notice {
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+}
+
+.asset-panel__pdf {
+  color: var(--muted);
+
+  a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+.asset-panel__delete-error {
+  padding: 10px 16px 0 18px;
+  color: var(--signal);
+}

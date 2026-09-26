@@ -125,3 +125,32 @@ export async function downloadImage(url: string): Promise<{ bytes: Buffer; ext: 
   if (bytes.byteLength > 20 * 1024 * 1024) return null
   return { bytes, ext }
 }
+
+// What a link keeps when its page can't be fetched: the URL and site name, plus why.
+export function fallbackLinkMeta(url: string, error: string): LinkMeta {
+  let siteName: string | null = null
+  try {
+    siteName = new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    // keep null
+  }
+  return { url, title: null, description: null, siteName, image: null, icon: null, error }
+}
+
+// A readable reason for a failed preview fetch.
+export function describeFetchError(err: unknown): string {
+  const e = err as { name?: string; message?: string; cause?: { code?: string } }
+  if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+    return 'The site didn’t answer within 10 seconds.'
+  }
+  const status = /HTTP (\d{3})/.exec(e?.message ?? '')?.[1]
+  if (status === '401' || status === '403' || status === '429') {
+    return `The site blocks automatic previews (HTTP ${status}).`
+  }
+  if (status) return `The site answered with an error (HTTP ${status}).`
+  const code = e?.cause?.code
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'Couldn’t find the site — offline?'
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET') return 'Couldn’t connect to the site.'
+  const detail = (e?.cause as { message?: string } | undefined)?.message ?? e?.message
+  return detail ? `Couldn’t load the page (${detail}).` : 'Couldn’t load the page.'
+}

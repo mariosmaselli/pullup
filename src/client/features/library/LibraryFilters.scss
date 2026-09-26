@@ -1,0 +1,68 @@
+.library-filters {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.library-filters__search,
+.library-filters__select {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background-color: var(--surface);
+  outline: none;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:hover:not(:disabled),
+  &:focus {
+    border-color: var(--muted);
+  }
+}
+
+.library-filters__search {
+  width: 260px;
+  padding: 0 10px;
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.library-filters__select {
+  max-width: 170px;
+  padding: 0 26px 0 10px;
+  color: var(--muted);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 55%,
+    calc(100% - 10px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  appearance: none;
+  cursor: pointer;
+
+  &[data-active] {
+    color: var(--ink);
+    border-color: var(--ink-soft);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+// Always takes its space (hidden, not removed) so the row never shifts.
+.library-filters__clear {
+  padding: 0 6px;
+  color: var(--muted);
+
+  &:hover:not(:disabled) {
+    color: var(--ink);
+  }
+
+  &:disabled {
+    visibility: hidden;
+  }
+}

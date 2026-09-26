@@ -11,6 +11,8 @@ import { Button } from '../Button/Button.tsx'
 import { ProjectPicker } from '../ProjectPicker/ProjectPicker.tsx'
 import { Segmented } from '../Segmented/Segmented.tsx'
 import { AssetAi } from '../AssetAi/AssetAi.tsx'
+import { AssetTags } from './AssetTags.tsx'
+import { AssetUsage } from './AssetUsage.tsx'
 import './AssetPanel.scss'
 
 const SOURCE_LABEL: Record<Asset['source'], string> = {
@@ -144,12 +146,16 @@ function Field({
 interface Props {
   asset: Asset
   onClose: () => void
+  // Inbox: called after "Mark reviewed" so the next item can open.
+  onReviewed?: (id: string) => void
 }
 
-export function AssetPanel({ asset, onClose }: Props) {
+export function AssetPanel({ asset, onClose, onReviewed }: Props) {
   const update = useUpdateAsset()
   const remove = useDeleteAsset()
   const reprocess = useReprocessAsset()
+  const busy = asset.processingStatus === 'pending' || asset.processingStatus === 'processing'
+  const previewError = asset.kind === 'link' ? asset.link?.meta?.error : null
 
   const save = (values: Omit<AssetPatch, 'id'>) => update.mutate({ id: asset.id, ...values })
 
@@ -199,6 +205,28 @@ export function AssetPanel({ asset, onClose }: Props) {
           </div>
         ) : null}
 
+        {previewError ? (
+          <div className="asset-panel__notice flex items-center justify-between">
+            <span className="-p1">
+              No preview: {previewError} Analyze and post ideas still work — they read the link’s
+              address plus your title and notes.
+            </span>
+            <Button size="s" disabled={busy} onClick={() => reprocess.mutate(asset.id)}>
+              {busy ? 'Trying…' : 'Retry'}
+            </Button>
+          </div>
+        ) : null}
+
+        {asset.pdf ? (
+          <p className="asset-panel__pdf -p1">
+            Page {asset.pdf.page} of “{asset.pdf.name}”. The PDF is kept as the original (
+            <a href={asset.pdf.url} download={asset.pdf.name}>
+              download
+            </a>
+            ); each page is its own image.
+          </p>
+        ) : null}
+
         <div className="asset-panel__fields flex flex-col">
           <div className="asset-panel__field flex flex-col">
             <span className="asset-panel__label -meta">Project</span>
@@ -237,9 +265,12 @@ export function AssetPanel({ asset, onClose }: Props) {
             multiline
             onSave={(notes) => save({ notes })}
           />
+          <AssetTags tags={asset.tags} onChange={(tags) => save({ tags })} />
         </div>
 
         <AssetAi asset={asset} />
+
+        <AssetUsage assetId={asset.id} blocking={remove.error ? true : undefined} />
 
         <dl className="asset-panel__details">
           {details
@@ -253,6 +284,11 @@ export function AssetPanel({ asset, onClose }: Props) {
         </dl>
       </div>
 
+      {remove.error ? (
+        <p className="asset-panel__delete-error -p1" role="alert">
+          Couldn’t delete: {remove.error.message}
+        </p>
+      ) : null}
       <footer className="asset-panel__footer flex items-center justify-between">
         <Button
           variant="danger"
@@ -272,8 +308,19 @@ export function AssetPanel({ asset, onClose }: Props) {
               Reprocess
             </Button>
           ) : null}
-          <Button variant="primary" size="s" onClick={() => save({ triaged: !asset.triagedAt })}>
-            {asset.triagedAt ? 'Back to inbox' : 'Mark reviewed'}
+          <Button
+            variant="primary"
+            size="s"
+            onClick={() => {
+              save({ triaged: !asset.triagedAt })
+              if (!asset.triagedAt) onReviewed?.(asset.id)
+            }}
+          >
+            {asset.triagedAt
+              ? 'Back to inbox'
+              : onReviewed
+                ? 'Mark reviewed · next'
+                : 'Mark reviewed'}
           </Button>
         </div>
       </footer>

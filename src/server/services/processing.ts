@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -10,7 +11,13 @@ import {
   sipsSize,
   sipsToJpeg,
 } from '../lib/ffmpeg.ts'
-import { downloadImage, fetchLinkMeta } from '../lib/link-meta.ts'
+import {
+  describeFetchError,
+  downloadImage,
+  fallbackLinkMeta,
+  fetchLinkMeta,
+} from '../lib/link-meta.ts'
+import type { LinkMeta } from '@shared/types.ts'
 import { fromLibraryPath, library, toLibraryPath } from '../library.ts'
 import type { AssetRow, AssetStore, DerivativeRow } from './assets.ts'
 
@@ -25,6 +32,8 @@ type NewDerivative = Omit<DerivativeRow, 'asset_id' | 'created_at'>
 export function createProcessor(assets: AssetStore) {
   const queue: string[] = []
   const idle: (() => void)[] = []
+  // Callers waiting for an asset's next processing run to finish (ensureDerivatives).
+  const waiting = new Map<string, (() => void)[]>()
   let running = 0
 
   const pump = () => {
@@ -33,6 +42,9 @@ export function createProcessor(assets: AssetStore) {
       running++
       process(id).finally(() => {
         running--
+        const done = waiting.get(id)
+        waiting.delete(id)
+        done?.forEach((resolve) => resolve())
         pump()
       })
     }
@@ -46,7 +58,8 @@ export function createProcessor(assets: AssetStore) {
 
     const dir = join(library.cache, id)
     try {
-      await rm(dir, { recursive: true, force: true })
+      // A link keeps its old preview until a new one has been fetched (processLink).
+      if (row.kind !== 'link') await rm(dir, { recursive: true, force: true })
       await mkdir(dir, { recursive: true })
 
       if (row.kind === 'image') await processImage(row, dir)
@@ -150,7 +163,23 @@ export function createProcessor(assets: AssetStore) {
   }
 
   async function processLink(row: AssetRow, dir: string) {
-    const meta = await fetchLinkMeta(row.url!)
+    let meta: LinkMeta
+    try {
+      meta = await fetchLinkMeta(row.url!)
+    } catch (err) {
+      // Blocked, offline or slow: the link stays usable — AI works from its URL and Mario's title
+      // and notes, and Retry fetches again. A preview fetched earlier is kept.
+      const previous = row.url_meta ? (JSON.parse(row.url_meta) as LinkMeta) : null
+      const reason = describeFetchError(err)
+      console.warn(`[processing] ${row.id}: no preview for ${row.url} — ${reason}`)
+      if (previous && !previous.error) return
+      assets.update(row.id, { url_meta: JSON.stringify(fallbackLinkMeta(row.url!, reason)) })
+      await rm(dir, { recursive: true, force: true })
+      return assets.replaceDerivatives(row.id, [])
+    }
+
+    await rm(dir, { recursive: true, force: true })
+    await mkdir(dir, { recursive: true })
     assets.update(row.id, { url_meta: JSON.stringify(meta) })
     if (!meta.image) return assets.replaceDerivatives(row.id, [])
 
@@ -191,7 +220,14 @@ export function createProcessor(assets: AssetStore) {
 
   function ensureProxy(assetId: string): Promise<DerivativeRow> {
     const existing = assets.derivativeRows(assetId).find((d) => d.role === 'proxy')
-    if (existing && !outdated(existing, assets.row(assetId))) return Promise.resolve(existing)
+    // cache/ may have been deleted: a proxy whose file is gone is rebuilt like an outdated one.
+    if (
+      existing &&
+      existsSync(fromLibraryPath(existing.file_path)) &&
+      !outdated(existing, assets.row(assetId))
+    ) {
+      return Promise.resolve(existing)
+    }
     const pending = proxyJobs.get(assetId)
     if (pending) return pending
 
@@ -223,17 +259,58 @@ export function createProcessor(assets: AssetStore) {
     return job
   }
 
+  // Derivatives (thumbnails, frames, previews) whose files were deleted from cache/. Proxies are
+  // left to ensureProxy (built on use); only assets whose original still exists are listed.
+  function missingDerivatives(ids?: string[]): string[] {
+    const wanted = ids ? new Set(ids) : null
+    const missing = new Set<string>()
+    for (const d of assets.allDerivatives()) {
+      if (d.role === 'proxy' || (wanted && !wanted.has(d.asset_id))) continue
+      if (!existsSync(fromLibraryPath(d.file_path))) missing.add(d.asset_id)
+    }
+    return [...missing].filter((id) => {
+      const row = assets.row(id)
+      if (!row || row.processing_status !== 'ready') return false
+      return !row.file_path || existsSync(fromLibraryPath(row.file_path))
+    })
+  }
+
+  const enqueue = (id: string) => {
+    if (!queue.includes(id)) queue.push(id)
+    pump()
+  }
+
+  // Rebuilds derivatives whose files are missing (all assets, or the ones given).
+  const repairMissing = (ids?: string[]): string[] => {
+    const missing = missingDerivatives(ids)
+    if (missing.length) console.log(`[processing] rebuilding missing previews: ${missing.length}`)
+    missing.forEach(enqueue)
+    return missing
+  }
+
   return {
     ensureProxy,
+    enqueue,
 
-    enqueue(id: string) {
-      if (!queue.includes(id)) queue.push(id)
-      pump()
+    // Re-queues work interrupted by a restart, links whose preview failed under the old rule
+    // (they become usable without a preview), and anything whose cached files were deleted.
+    resume() {
+      for (const id of assets.idsWithStatus(['pending', 'processing'])) enqueue(id)
+      for (const id of assets.idsWithStatus(['failed'])) {
+        if (assets.row(id)?.kind === 'link') enqueue(id)
+      }
+      repairMissing()
     },
 
-    // Re-queues work interrupted by a restart.
-    resume() {
-      for (const id of assets.idsWithStatus(['pending', 'processing'])) this.enqueue(id)
+    repairMissing,
+
+    // Resolves once this asset's derivatives exist again (rebuilding them if their files are gone).
+    ensureDerivatives(id: string): Promise<void> {
+      if (!missingDerivatives([id]).length && !queue.includes(id)) return Promise.resolve()
+      return new Promise<void>((resolve) => {
+        waiting.set(id, [...(waiting.get(id) ?? []), resolve])
+        enqueue(id)
+      })
     },
 
     // Resolves once the queue is empty (used by tests).

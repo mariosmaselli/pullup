@@ -31,13 +31,20 @@ export function CaptureTray() {
             ) : (
               <span className="capture-tray__status -meta">
                 {activity.status === 'uploading' && activity.kind === 'upload'
-                  ? `${Math.round(activity.progress * 100)}%`
+                  ? activity.progress < 1
+                    ? `${Math.round(activity.progress * 100)}%`
+                    : 'Processing'
                   : STATUS[activity.status]}
+                {activity.pages
+                  ? ` · ${activity.pages} page${activity.pages === 1 ? '' : 's'}`
+                  : ''}
               </span>
             )}
           </div>
           {activity.error ? (
             <p className="capture-tray__error -meta">{activity.error}</p>
+          ) : activity.message ? (
+            <p className="capture-tray__message -meta">{activity.message}</p>
           ) : (
             <div className="capture-tray__bar">
               <div

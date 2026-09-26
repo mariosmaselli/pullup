@@ -55,6 +55,19 @@ export function AssetAi({ asset }: { asset: Asset }) {
   }
 
   const analysis = asset.analysis
+  const hasTag = (tag: string) => asset.tags.some((t) => t.toLowerCase() === tag.toLowerCase())
+  const addTag = (tag: string) =>
+    !hasTag(tag) && update.mutate({ id: asset.id, tags: [...asset.tags, tag] })
+  // Copies the description into Mario's notes (appended, never replacing what he wrote).
+  const descriptionInNotes = !!analysis && asset.notes.includes(analysis.description.trim())
+  const copyToNotes = () => {
+    if (!analysis || descriptionInNotes) return
+    const text = analysis.description.trim()
+    update.mutate({
+      id: asset.id,
+      notes: asset.notes.trim() ? `${asset.notes.trim()}\n\n${text}` : text,
+    })
+  }
 
   return (
     <section className="asset-ai flex flex-col">
@@ -74,7 +87,21 @@ export function AssetAi({ asset }: { asset: Asset }) {
 
       {analysis ? (
         <div className="asset-ai__result flex flex-col">
-          <p className="-p1">{analysis.description}</p>
+          <div className="flex flex-col">
+            <p className="-p1">{analysis.description}</p>
+            <button
+              type="button"
+              className="asset-ai__action -meta"
+              disabled={descriptionInNotes || update.isPending}
+              onClick={copyToNotes}
+            >
+              {descriptionInNotes
+                ? '✓ In your notes'
+                : asset.notes.trim()
+                  ? 'Add to notes'
+                  : 'Use as notes'}
+            </button>
+          </div>
 
           {suggestedProject && suggestedProject.id !== asset.projectId ? (
             <div className="asset-ai__suggestion flex items-center justify-between">
@@ -111,11 +138,20 @@ export function AssetAi({ asset }: { asset: Asset }) {
           ) : null}
 
           {analysis.suggestedTags.length ? (
-            <div className="asset-ai__tags flex">
+            <div className="asset-ai__tags flex items-center">
+              <span className="asset-ai__label -meta">Suggested tags</span>
               {analysis.suggestedTags.map((tag) => (
-                <span key={tag} className="asset-ai__tag -meta">
-                  {tag}
-                </span>
+                <button
+                  key={tag}
+                  type="button"
+                  className="asset-ai__tag -meta"
+                  aria-pressed={hasTag(tag)}
+                  disabled={hasTag(tag) || update.isPending}
+                  title={hasTag(tag) ? 'Already a tag' : `Add “${tag}” to tags`}
+                  onClick={() => addTag(tag)}
+                >
+                  {hasTag(tag) ? '✓' : '+'} {tag}
+                </button>
               ))}
             </div>
           ) : null}

@@ -12,6 +12,10 @@ export interface Activity {
   status: 'queued' | 'uploading' | 'done' | 'duplicate' | 'error'
   progress: number // 0–1
   error?: string
+  // A PDF became this many page images.
+  pages?: number
+  // Worth reading before it fades (e.g. a PDF over the page limit).
+  message?: string
 }
 
 interface CaptureApi {
@@ -21,15 +25,24 @@ interface CaptureApi {
   dismiss: (id: string) => void
   quickCaptureOpen: boolean
   setQuickCaptureOpen: (open: boolean) => void
+  // The project being viewed: captures made there start in it (set by GlobalCapture).
+  captureProjectId: string | null
+  setCaptureProjectId: (id: string | null) => void
 }
 
 const CaptureContext = createContext<CaptureApi | null>(null)
 
 const UPLOAD_CONCURRENCY = 2
 const DISMISS_AFTER_MS = 4000
+const DISMISS_MESSAGE_AFTER_MS = 12_000
 
 // XHR instead of fetch: fetch has no upload progress.
-function uploadFile(file: File, source: AssetSource, onProgress: (p: number) => void) {
+function uploadFile(
+  file: File,
+  source: AssetSource,
+  projectId: string | null,
+  onProgress: (p: number) => void
+) {
   return new Promise<CaptureResult>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/assets/upload')
@@ -37,6 +50,7 @@ function uploadFile(file: File, source: AssetSource, onProgress: (p: number) => 
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name || 'pasted'))
     xhr.setRequestHeader('X-Last-Modified', String(file.lastModified))
     xhr.setRequestHeader('X-Source', source)
+    if (projectId) xhr.setRequestHeader('X-Project-Id', projectId)
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onload = () => {
       const body = JSON.parse(xhr.responseText || '{}')
@@ -51,7 +65,16 @@ function uploadFile(file: File, source: AssetSource, onProgress: (p: number) => 
 export function CaptureProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>([])
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
-  const queue = useRef<{ activityId: string; file: File; source: AssetSource }[]>([])
+  const [captureProjectId, setProjectState] = useState<string | null>(null)
+  // Read when a capture starts, so a queued upload keeps the project it was dropped on.
+  const projectRef = useRef<string | null>(null)
+  const setCaptureProjectId = useCallback((id: string | null) => {
+    projectRef.current = id
+    setProjectState(id)
+  }, [])
+  const queue = useRef<
+    { activityId: string; file: File; source: AssetSource; projectId: string | null }[]
+  >([])
   const active = useRef(0)
   const invalidate = useInvalidateAssets()
 
@@ -66,7 +89,9 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
   const finish = useCallback(
     (id: string, values: Partial<Activity>) => {
       patch(id, { progress: 1, ...values })
-      if (values.status !== 'error') setTimeout(() => dismiss(id), DISMISS_AFTER_MS)
+      if (values.status !== 'error') {
+        setTimeout(() => dismiss(id), values.message ? DISMISS_MESSAGE_AFTER_MS : DISMISS_AFTER_MS)
+      }
       invalidate()
     },
     [patch, dismiss, invalidate]
@@ -77,9 +102,15 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
       const job = queue.current.shift()!
       active.current++
       patch(job.activityId, { status: 'uploading' })
-      uploadFile(job.file, job.source, (progress) => patch(job.activityId, { progress }))
+      uploadFile(job.file, job.source, job.projectId, (progress) =>
+        patch(job.activityId, { progress })
+      )
         .then((result) =>
-          finish(job.activityId, { status: result.duplicate ? 'duplicate' : 'done' })
+          finish(job.activityId, {
+            status: result.duplicate ? 'duplicate' : 'done',
+            pages: result.pages,
+            message: result.message,
+          })
         )
         .catch((err: Error) => finish(job.activityId, { status: 'error', error: err.message }))
         .finally(() => {
@@ -91,7 +122,13 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
 
   const uploadFiles = useCallback(
     (files: File[], source: AssetSource = 'drop') => {
-      const jobs = files.map((file) => ({ activityId: crypto.randomUUID(), file, source }))
+      const projectId = projectRef.current
+      const jobs = files.map((file) => ({
+        activityId: crypto.randomUUID(),
+        file,
+        source,
+        projectId,
+      }))
       setActivities((list) => [
         ...list,
         ...jobs.map<Activity>((job) => ({
@@ -114,6 +151,7 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
       if (!value) return
       const link = isUrl(value)
       const id = crypto.randomUUID()
+      const projectId = projectRef.current
       setActivities((list) => [
         ...list,
         {
@@ -128,11 +166,11 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         await (link
           ? api<CaptureResult>('/assets/link', {
               method: 'POST',
-              body: JSON.stringify({ url: value, source }),
+              body: JSON.stringify({ url: value, source, projectId }),
             })
           : api<CaptureResult>('/assets/note', {
               method: 'POST',
-              body: JSON.stringify({ body: value, source }),
+              body: JSON.stringify({ body: value, source, projectId }),
             }))
         finish(id, { status: 'done' })
       } catch (err) {
@@ -151,6 +189,8 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         dismiss,
         quickCaptureOpen,
         setQuickCaptureOpen,
+        captureProjectId,
+        setCaptureProjectId,
       }}
     >
       {children}

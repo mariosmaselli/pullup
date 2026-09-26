@@ -121,7 +121,7 @@ describe('capture', () => {
   })
 
   it('rejects unsupported files', async () => {
-    const res = await upload(Buffer.from('%PDF-1.7'), 'brief.pdf')
+    const res = await upload(Buffer.from('PK\x03\x04'), 'brief.zip')
     expect(res.status).toBe(415)
   })
 

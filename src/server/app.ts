@@ -46,7 +46,8 @@ const libraryFiles = (folder: 'media' | 'cache' | 'fonts'): MiddlewareHandler =>
   })
   return async (c, next) => {
     const res = await serve(c, next)
-    if (!res) return
+    // Not found: serveStatic passed on to the API's 404 (c.res), and returned no Response.
+    if (!(res instanceof Response)) return
     // Hono's MIME table lacks some capture formats (.mov, .heic…).
     const mime =
       mimeFromName(c.req.path) ?? FONT_MIME[c.req.path.split('.').pop()?.toLowerCase() ?? '']

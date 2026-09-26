@@ -4,8 +4,8 @@ import { isUrl } from '../../lib/format.ts'
 import { Button } from '../Button/Button.tsx'
 import './QuickCapture.scss'
 
-// ⌘K dialog: type a note or paste a link; Enter saves.
-export function QuickCapture() {
+// ⌘K dialog: type a note or paste a link; Enter saves. On a project page it saves to that project.
+export function QuickCapture({ projectName }: { projectName?: string | null }) {
   const { quickCaptureOpen, setQuickCaptureOpen, captureText, uploadFiles } = useCapture()
   const dialog = useRef<HTMLDialogElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -59,7 +59,9 @@ export function QuickCapture() {
         />
         <div className="quick-capture__footer flex items-center justify-between">
           <span className="quick-capture__hint -meta">
-            {text.trim() ? `Saves as ${kind}` : 'Enter to save · Shift+Enter for a new line'}
+            {text.trim()
+              ? `Saves as ${kind}${projectName ? ` in “${projectName}”` : ''}`
+              : 'Enter to save · Shift+Enter for a new line'}
           </span>
           <div className="flex items-center">
             <Button variant="ghost" size="s" onClick={() => fileInput.current?.click()}>
@@ -75,7 +77,7 @@ export function QuickCapture() {
         ref={fileInput}
         type="file"
         multiple
-        accept="image/*,video/*,.heic,.mov,.mkv"
+        accept="image/*,video/*,.heic,.mov,.mkv,.pdf,.txt,.md,.webloc"
         hidden
         onChange={(e) => onFiles(e.target.files)}
       />

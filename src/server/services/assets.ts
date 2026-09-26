@@ -1,5 +1,21 @@
-import type { Asset, AssetAnalysis, AssetDerivative, LinkMeta } from '@shared/types.ts'
-import type { AssetKind, AssetSource, ProcessingStatus } from '@shared/constants.ts'
+import { basename } from 'node:path'
+import type {
+  Asset,
+  AssetAnalysis,
+  AssetDerivative,
+  AssetUsage,
+  LinkMeta,
+  TagCount,
+} from '@shared/types.ts'
+import type {
+  AssetKind,
+  AssetSource,
+  IdeaStatus,
+  Platform,
+  PostStatus,
+  ProcessingStatus,
+  Visibility,
+} from '@shared/constants.ts'
 import type { DB } from '../db/index.ts'
 import { fileUrl } from '../library.ts'
 import { notify } from '../lib/events.ts'
@@ -68,6 +84,30 @@ export const toAnalysis = (row: AnalysisRow): AssetAnalysis => ({
 
 export const now = () => new Date().toISOString()
 
+// A PDF becomes one PNG asset per page (capture.ts). The PDF itself stays in media/ as the
+// original, and the pages sit next to it — the file names are the link, no extra columns:
+//   media/2026/09/award-3f9a1c2b.pdf        the PDF, as captured
+//   media/2026/09/award-3f9a1c2b-p001.png   page 1 (checksum "<pdf sha256>:p1")
+// Regular media always end in "-<id8>.<ext>", so they never look like a page.
+const PDF_PAGE_FILE = /^(.*-[0-9a-f]{8})-p(\d{3,})\.png$/
+const PDF_PAGE_NAME = /^(.*) \(page \d+\)\.png$/
+
+export const pdfPageFile = (pdfPath: string, page: number) =>
+  pdfPath.replace(/\.pdf$/, `-p${String(page).padStart(3, '0')}.png`)
+export const pdfPageName = (pdfName: string, page: number) => `${pdfName} (page ${page}).png`
+export const pdfPageChecksum = (pdfChecksum: string, page: number) => `${pdfChecksum}:p${page}`
+
+export function pdfSourceOf(
+  row: Pick<AssetRow, 'file_path' | 'checksum' | 'original_name'>
+): { pdfPath: string; name: string; page: number } | null {
+  if (!row.file_path || !row.checksum?.includes(':p')) return null
+  const match = PDF_PAGE_FILE.exec(row.file_path)
+  if (!match) return null
+  const pdfPath = `${match[1]}.pdf`
+  const name = PDF_PAGE_NAME.exec(row.original_name ?? '')?.[1] ?? basename(pdfPath)
+  return { pdfPath, name, page: Number(match[2]) }
+}
+
 export function toAsset(
   row: AssetRow,
   derivatives: DerivativeRow[],
@@ -82,6 +122,8 @@ export function toAsset(
       height: d.height,
       timeMs: d.time_ms,
     }))
+
+  const pdf = pdfSourceOf(row)
 
   return {
     id: row.id,
@@ -117,13 +159,38 @@ export function toAsset(
     thumbUrl: mapped.find((d) => d.role === 'thumb')?.url ?? null,
     derivatives: mapped,
     analysis: analysis ? toAnalysis(analysis) : null,
+    pdf: pdf ? { url: fileUrl(pdf.pdfPath), name: pdf.name, page: pdf.page } : null,
   }
 }
 
 export interface AssetFilter {
   scope?: 'inbox' | 'all'
+  // A project id, or 'none' for assets without a project.
   projectId?: string
+  // Words matched (all of them) against title, notes, note text, file name, link URL and title.
+  q?: string
+  kind?: AssetKind
+  visibility?: Visibility
+  tag?: string
+  limit?: number
 }
+
+export const LIST_LIMIT = 1000
+
+// Tags as Mario typed them, trimmed, without case-insensitive repeats.
+export function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const tag = raw.trim().replace(/\s+/g, ' ')
+    if (!tag || seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    out.push(tag)
+  }
+  return out
+}
+
+const likeTerm = (term: string) => `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 
 export function createAssetStore(db: DB) {
   const derivativesFor = (ids: string[]) => {
@@ -156,18 +223,73 @@ export function createAssetStore(db: DB) {
   }
 
   return {
-    list({ scope = 'all', projectId }: AssetFilter = {}): Asset[] {
-      const conditions = [
-        scope === 'inbox' ? 'triaged_at IS NULL' : null,
-        projectId ? 'project_id = @projectId' : null,
-      ].filter(Boolean)
+    list({
+      scope = 'all',
+      projectId,
+      q,
+      kind,
+      visibility,
+      tag,
+      limit = LIST_LIMIT,
+    }: AssetFilter = {}): Asset[] {
+      const params: Record<string, string | number> = { limit }
+      const conditions: string[] = []
+      if (scope === 'inbox') conditions.push('triaged_at IS NULL')
+      if (projectId === 'none') conditions.push('project_id IS NULL')
+      else if (projectId) {
+        conditions.push('project_id = @projectId')
+        params.projectId = projectId
+      }
+      if (kind) {
+        conditions.push('kind = @kind')
+        params.kind = kind
+      }
+      if (visibility) {
+        conditions.push('visibility = @visibility')
+        params.visibility = visibility
+      }
+      if (tag) {
+        conditions.push(
+          'EXISTS (SELECT 1 FROM json_each(assets.tags) t WHERE lower(t.value) = lower(@tag))'
+        )
+        params.tag = tag.trim()
+      }
+      const terms = (q ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 8)
+      terms.forEach((term, i) => {
+        const p = `@q${i}`
+        conditions.push(
+          `(${[
+            'title',
+            'notes',
+            'body',
+            'original_name',
+            'url',
+            "json_extract(url_meta, '$.title')",
+            'tags',
+          ]
+            .map((column) => `${column} LIKE ${p} ESCAPE '\\'`)
+            .join(' OR ')})`
+        )
+        params[`q${i}`] = likeTerm(term)
+      })
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
       const rows = db
         .prepare(
-          `SELECT * FROM assets ${where} ORDER BY captured_at DESC, created_at DESC LIMIT 1000`
+          `SELECT * FROM assets ${where} ORDER BY captured_at DESC, created_at DESC LIMIT @limit`
         )
-        .all({ projectId: projectId ?? null }) as AssetRow[]
+        .all(params) as AssetRow[]
       return hydrate(rows)
+    },
+
+    // Every tag in use, most used first.
+    tags(): TagCount[] {
+      const rows = db
+        .prepare(
+          `SELECT t.value AS tag, count(*) AS count FROM assets, json_each(assets.tags) t
+           GROUP BY lower(t.value) ORDER BY count DESC, lower(t.value)`
+        )
+        .all() as TagCount[]
+      return rows
     },
 
     row(id: string): AssetRow | undefined {
@@ -184,6 +306,27 @@ export function createAssetStore(db: DB) {
         AssetRow | undefined
     },
 
+    // Page assets made from the PDF with this checksum (any that are still in the library).
+    findPdfPages(pdfChecksum: string): AssetRow[] {
+      const rows = db
+        .prepare('SELECT * FROM assets WHERE checksum > ? AND checksum < ?')
+        .all(`${pdfChecksum}:p`, `${pdfChecksum}:q`) as AssetRow[]
+      const page = (r: AssetRow) => Number(r.checksum!.slice(pdfChecksum.length + 2))
+      return rows.sort((a, b) => page(a) - page(b))
+    },
+
+    // How many assets are pages of the PDF at this library path.
+    pdfPageCount(pdfPath: string): number {
+      const prefix = pdfPath.replace(/\.pdf$/, '-p')
+      return (
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM assets WHERE substr(file_path, 1, length(?)) = ? AND checksum LIKE '%:p%'"
+          )
+          .get(prefix, prefix) as { n: number }
+      ).n
+    },
+
     insert(values: Partial<AssetRow> & Pick<AssetRow, 'id' | 'kind' | 'source' | 'captured_at'>) {
       const columns = Object.keys(values)
       db.prepare(
@@ -198,6 +341,17 @@ export function createAssetStore(db: DB) {
       db.prepare(
         `UPDATE assets SET ${columns.map((c) => `${c} = @${c}`).join(', ')}, updated_at = @updated_at WHERE id = @id`
       ).run({ ...values, id, updated_at: now() })
+      notify('assets')
+    },
+
+    // One statement for many assets (bulk actions), one change event.
+    updateMany(ids: string[], values: Partial<Omit<AssetRow, 'id' | 'created_at'>>) {
+      const columns = Object.keys(values)
+      if (!columns.length || !ids.length) return
+      db.prepare(
+        `UPDATE assets SET ${columns.map((c) => `${c} = @${c}`).join(', ')}, updated_at = @updated_at
+         WHERE id IN (SELECT value FROM json_each(@ids))`
+      ).run({ ...values, ids: JSON.stringify(ids), updated_at: now() })
       notify('assets')
     },
 
@@ -264,10 +418,60 @@ export function createAssetStore(db: DB) {
 
     usedInPosts(id: string): number {
       return (
-        db.prepare('SELECT count(*) AS n FROM post_media WHERE asset_id = ?').get(id) as {
+        db
+          .prepare('SELECT count(DISTINCT post_id) AS n FROM post_media WHERE asset_id = ?')
+          .get(id) as {
           n: number
         }
       ).n
+    },
+
+    // Posts that show this asset and ideas that cite it (read-only look into their tables).
+    usage(id: string): AssetUsage {
+      const posts = db
+        .prepare(
+          `SELECT p.id, p.platform, p.status, r.segments, r.caption
+           FROM posts p LEFT JOIN post_revisions r ON r.id = p.current_revision_id
+           WHERE p.id IN (SELECT post_id FROM post_media WHERE asset_id = ?)
+           ORDER BY p.updated_at DESC`
+        )
+        .all(id) as {
+        id: string
+        platform: Platform
+        status: PostStatus
+        segments: string | null
+        caption: string | null
+      }[]
+      const ideas = db
+        .prepare(
+          `SELECT i.id, i.title, i.status FROM ideas i
+           WHERE i.id IN (SELECT idea_id FROM idea_sources WHERE asset_id = ?)
+           ORDER BY i.created_at DESC`
+        )
+        .all(id) as { id: string; title: string; status: IdeaStatus }[]
+
+      const excerpt = (segments: string | null, caption: string | null) => {
+        const texts = (JSON.parse(segments ?? '[]') as { text?: string }[]).map((s) => s.text ?? '')
+        const text = [...texts, caption ?? ''].find((t) => t.trim()) ?? ''
+        const line = text.trim().replace(/\s+/g, ' ')
+        return line.length > 90 ? `${line.slice(0, 89)}…` : line
+      }
+      return {
+        posts: posts.map((p) => ({
+          id: p.id,
+          platform: p.platform,
+          status: p.status,
+          excerpt: excerpt(p.segments, p.caption),
+        })),
+        ideas,
+      }
+    },
+
+    // Every derivative row (for finding files deleted from cache/).
+    allDerivatives(): Pick<DerivativeRow, 'id' | 'asset_id' | 'role' | 'file_path'>[] {
+      return db
+        .prepare('SELECT id, asset_id, role, file_path FROM asset_derivatives')
+        .all() as Pick<DerivativeRow, 'id' | 'asset_id' | 'role' | 'file_path'>[]
     },
   }
 }
