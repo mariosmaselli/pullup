@@ -16,9 +16,10 @@ New folders show up in **Templates** automatically (Vite picks them up; no regis
 The full contract with comments is in [`src/shared/template.ts`](../src/shared/template.ts).
 Look at [`text-story`](text-story) (canvas 2D still), [`image-caption`](image-caption) (canvas
 2D media + type) and [`video-caption`](video-caption) (the same card over a clip) first;
-[`shader-transition`](shader-transition) (Three.js, GSAP, video textures, several clips) and
-[`device-frame`](device-frame) (3D scene) show WebGL. Removed for now and kept in
-git history (commit 4bfcd7c): `slow-zoom`, `case-study-cover`, `planes-3d` (to be reworked).
+Kept in git history, removed because they didn't meet Mario's bar (useful as code references,
+not as designs): `slow-zoom`, `case-study-cover`, `planes-3d` (commit 4bfcd7c) and
+`crossfade-slideshow`, `shader-transition` (Three.js multi-clip transitions, video decode in a
+custom shader), `device-frame` (3D device scene) — commit 2d3c978.
 
 ## Shared options: media size and text position
 
@@ -45,16 +46,7 @@ left/top edge visible); when there's room to spare it places the media (0 = agai
 edge). The defaults reproduce the classic look — media covering the frame, centred; type
 bottom-left on the story margins.
 
-Exceptions, on purpose: templates that show **several** media (`crossfade-slideshow`,
-`shader-transition`) keep their own "Media size" select (`framing` / `fit`: Auto / Fill / Fit or
-Frame) — one choice has to work for slides of different shapes, and Auto picks from them. They
-still take `scale`, `focusX` and `focusY` from `MEDIA_SIZE_PARAMS` (pick them out of the group),
-applied to each slide within its framing: full bleed at cover × scale, framed media at their
-contained size × scale inside the room the type leaves (cropped to it when bigger).
-`device-frame` puts the media on a device screen (its own "Fit media"), not full frame; the device
-itself has `deviceSize` / `deviceX` / `deviceY` (own keys — the draft editor's stand-in reads
-`focusX`/`focusY` as the media's position). All of them still take `TEXT_POSITION_PARAMS`. Every
-new option reduces to the previous look at its default.
+Every new option reduces to the previous look at its default.
 
 Helpers (all in canvas px):
 
@@ -109,7 +101,7 @@ instance its own bitmap, so closing it is safe.
   - **Decode video samples yourself: `sRGBTransferEOTF(texture2D(uVideo, uv))`** — three.js
     uploads video frames undecoded (only its built-in materials decode them), so without it video
     comes out washed out. Images must not be decoded twice: use a uniform flag per input
-    (see `device-frame`, `shader-transition`).
+    (examples in git history: `device-frame`, `shader-transition` at commit 2d3c978).
   - Composite type and add grain in sRGB (`sRGBTransferOETF` → mix → back with
     `sRGBTransferEOTF`): grain added in linear light is much stronger in the shadows and pushes
     the bitrate over Instagram's limit.

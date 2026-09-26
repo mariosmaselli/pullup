@@ -37,9 +37,9 @@ export function compatibleTemplates(platform: Platform, kinds: MediaKind[]): Tem
 // First choice per kind of frame; missing templates are skipped, then any compatible one is used.
 const PREFERRED = {
   text: ['text-story', 'text-reveal'],
-  image: ['image-caption', 'device-frame'],
-  video: ['video-caption', 'device-frame'],
-  several: ['crossfade-slideshow', 'shader-transition'],
+  image: ['image-caption'],
+  video: ['video-caption'],
+  several: [], // no multi-media template until the new ones land
 }
 
 export function defaultTemplate(platform: Platform, kinds: MediaKind[]): FrameTemplate | null {
