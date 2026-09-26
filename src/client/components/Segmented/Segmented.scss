@@ -6,7 +6,7 @@
 }
 
 .segmented__option {
-  padding: 5px 8px;
+  padding: var(--space-8);
   border-radius: calc(var(--radius-m) - 3px);
   color: var(--muted);
   white-space: nowrap;
