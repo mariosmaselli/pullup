@@ -1,0 +1,99 @@
+.source-picker {
+  gap: 8px;
+}
+
+.source-picker__search {
+  width: 100%;
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  outline: none;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+// Fixed height: filtering or selecting never moves what's below.
+.source-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  align-content: start;
+  gap: 10px;
+  height: 248px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.source-picker__item {
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+  color: var(--muted);
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &[aria-pressed='true'] {
+    color: var(--ink);
+
+    .source-picker__preview {
+      outline: 2px solid var(--ink);
+    }
+  }
+}
+
+.source-picker__preview {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: var(--surface-muted);
+  outline-offset: -2px;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.source-picker__text {
+  padding: 6px;
+  overflow: hidden;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.source-picker__order {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--bg);
+  background: var(--ink);
+}
+
+.source-picker__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-picker__empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}

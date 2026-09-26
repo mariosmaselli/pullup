@@ -43,7 +43,47 @@ interface ProjectRow {
   description: string
   is_client_work: number
   ai_allowed: number
+  tags: string
 }
+
+// A post may reach the AI (as "already covered" or a voice example) only if nothing it's tied to
+// belongs to a project with AI turned off: its own project, its media, or its idea's sources.
+const POST_AI_ALLOWED = `
+  NOT EXISTS (SELECT 1 FROM projects x WHERE x.id = p.project_id AND x.ai_allowed = 0)
+  AND NOT EXISTS (SELECT 1 FROM post_media m JOIN assets a ON a.id = m.asset_id
+    JOIN projects x ON x.id = a.project_id WHERE m.post_id = p.id AND x.ai_allowed = 0)
+  AND NOT EXISTS (SELECT 1 FROM idea_sources s JOIN assets a ON a.id = s.asset_id
+    JOIN projects x ON x.id = a.project_id WHERE s.idea_id = p.idea_id AND x.ai_allowed = 0)`
+
+const IDEA_AI_ALLOWED = `
+  NOT EXISTS (SELECT 1 FROM projects x WHERE x.id = i.project_id AND x.ai_allowed = 0)
+  AND NOT EXISTS (SELECT 1 FROM idea_sources s JOIN assets a ON a.id = s.asset_id
+    JOIN projects x ON x.id = a.project_id WHERE s.idea_id = i.id AND x.ai_allowed = 0)`
+
+interface PostTextRow {
+  id: string
+  platform: string
+  status: string
+  author: 'ai' | 'me'
+  segments: string
+  caption: string | null
+  published_at: string | null
+}
+
+const clip = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
+
+// A post's current text: its posts/frames/slides, then an Instagram caption.
+const postText = (row: PostTextRow, max: number) =>
+  clip(
+    [
+      ...(JSON.parse(row.segments) as { text: string }[]).map((s) => s.text.trim()),
+      row.caption?.trim() && `Caption: ${row.caption.trim()}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    max
+  )
 
 interface AnalysisRow {
   description: string
@@ -143,27 +183,155 @@ export function createContextBuilder(db: DB) {
     db.prepare('SELECT * FROM asset_derivatives WHERE asset_id = ?').all(assetId) as DerivativeRow[]
 
   return {
-    // Throws if any asset belongs to a project with AI analysis turned off.
-    assertAllowed(rows: AssetRow[]) {
-      for (const row of rows) {
-        const p = project(row.project_id)
-        if (p && !p.ai_allowed) {
-          throw new AiError(
-            `“${p.name}” has AI analysis turned off. Allow it on the project page first.`,
-            403
-          )
-        }
+    // Throws if the project has AI analysis turned off.
+    assertProjectAllowed(id: string | null) {
+      const p = project(id)
+      if (p && !p.ai_allowed) {
+        throw new AiError(
+          `“${p.name}” has AI analysis turned off. Allow it on the project page first.`,
+          403
+        )
       }
     },
 
+    // Throws if any asset belongs to a project with AI analysis turned off.
+    assertAllowed(rows: AssetRow[]) {
+      for (const row of rows) this.assertProjectAllowed(row.project_id)
+    },
+
+    // Mario's description and tags of a project.
     describeProject(id: string | null): string {
       const p = project(id)
       if (!p) return ''
+      const tags = JSON.parse(p.tags) as string[]
       return [
         `<project id="${p.id}" name="${attr(p.name)}"${p.is_client_work ? ' client_work="true"' : ''}>`,
-        p.description || '(no description)',
+        p.description.trim()
+          ? `Description (by Mario): ${p.description.trim()}`
+          : '(no description)',
+        tags.length && `Tags (by Mario): ${tags.join(', ')}`,
         '</project>',
-      ].join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
+    },
+
+    // Up to `limit` ready assets of a project for "Get ideas" on the whole project: material no
+    // idea or post uses yet first, then the newest; returned oldest first so the model sees how
+    // the work progressed.
+    projectMaterial(projectId: string, limit: number): string[] {
+      return (
+        db
+          .prepare(
+            `SELECT id FROM (
+               SELECT a.id, a.captured_at FROM assets a
+               WHERE a.project_id = ? AND a.processing_status = 'ready'
+               ORDER BY EXISTS (SELECT 1 FROM idea_sources s WHERE s.asset_id = a.id)
+                   OR EXISTS (SELECT 1 FROM post_media m WHERE m.asset_id = a.id),
+                 a.captured_at DESC
+               LIMIT ?
+             ) ORDER BY captured_at`
+          )
+          .all(projectId, limit) as { id: string }[]
+      ).map((r) => r.id)
+    },
+
+    // What already exists for this material or these projects, so the model stops repeating
+    // itself: open and drafted ideas, ideas Mario dismissed, and the text of approved, scheduled
+    // or published posts.
+    covered(scope: { assetIds: string[]; projectIds: string[] }) {
+      const params = {
+        assets: JSON.stringify(scope.assetIds),
+        projects: JSON.stringify(scope.projectIds),
+      }
+      const ideas = (dismissed: boolean, limit: number) =>
+        db
+          .prepare(
+            `SELECT i.title, i.summary FROM ideas i
+             WHERE (i.project_id IN (SELECT value FROM json_each(@projects))
+                 OR i.id IN (SELECT idea_id FROM idea_sources
+                             WHERE asset_id IN (SELECT value FROM json_each(@assets))))
+               AND i.status ${dismissed ? "= 'dismissed'" : "!= 'dismissed'"}
+               AND ${IDEA_AI_ALLOWED}
+             ORDER BY i.created_at DESC LIMIT ${limit}`
+          )
+          .all(params) as { title: string; summary: string }[]
+      const open = ideas(false, 20)
+      const dismissed = ideas(true, 15)
+      const posts = db
+        .prepare(
+          `SELECT p.id, p.platform, p.status, p.published_at, r.author, r.segments, r.caption
+           FROM posts p JOIN post_revisions r ON r.id = p.current_revision_id
+           WHERE p.status IN ('approved', 'scheduled', 'published')
+             AND (p.project_id IN (SELECT value FROM json_each(@projects))
+               OR p.idea_id IN (SELECT idea_id FROM idea_sources
+                                WHERE asset_id IN (SELECT value FROM json_each(@assets)))
+               OR p.id IN (SELECT post_id FROM post_media
+                           WHERE asset_id IN (SELECT value FROM json_each(@assets))))
+             AND ${POST_AI_ALLOWED}
+           ORDER BY p.status = 'published' DESC, coalesce(p.published_at, p.scheduled_for, p.updated_at) DESC
+           LIMIT 10`
+        )
+        .all(params) as PostTextRow[]
+
+      const idea = (i: { title: string; summary: string }) =>
+        `- ${i.title}${i.summary ? ` — ${clip(i.summary, 200)}` : ''}`
+      const sections = [
+        open.length && `Ideas already suggested or drafted:\n${open.map(idea).join('\n')}`,
+        dismissed.length &&
+          `Ideas Mario dismissed (he didn't want these):\n${dismissed.map(idea).join('\n')}`,
+        posts.length &&
+          `Posts already approved or published:\n${posts
+            .map(
+              (p) =>
+                `<post platform="${p.platform}" status="${p.status}"${p.published_at ? ` published="${p.published_at.slice(0, 10)}"` : ''}>\n${postText(p, 500)}\n</post>`
+            )
+            .join('\n')}`,
+      ].filter(Boolean)
+      return {
+        text: sections.length
+          ? `<already_covered>\n${sections.join('\n\n')}\n</already_covered>`
+          : '',
+        counts: { ideas: open.length, dismissed: dismissed.length, posts: posts.length },
+      }
+    },
+
+    // Up to `perPlatform` posts per platform in Mario's own voice: ones he edited by hand
+    // (published first), then published ones. Never from the idea being drafted.
+    voiceExamples(platforms: string[], excludeIdeaId: string | null, perPlatform = 3) {
+      const pick = db.prepare(
+        `SELECT p.id, p.platform, p.status, p.published_at, r.author, r.segments, r.caption
+         FROM posts p JOIN post_revisions r ON r.id = p.current_revision_id
+         WHERE p.platform = @platform
+           AND (p.status = 'published'
+             OR (r.author = 'me' AND p.status NOT IN ('discarded', 'archived')))
+           AND p.idea_id IS NOT @idea
+           AND ${POST_AI_ALLOWED}
+         ORDER BY r.author = 'me' DESC, p.status = 'published' DESC,
+           coalesce(p.published_at, p.updated_at) DESC
+         LIMIT @limit`
+      )
+      // Over-fetch: blank drafts started by hand have no text to show.
+      const examples = platforms.flatMap((platform) =>
+        (pick.all({ platform, idea: excludeIdeaId, limit: perPlatform * 4 }) as PostTextRow[])
+          .map((row) => ({ row, text: postText(row, 600) }))
+          .filter((e) => e.text.trim())
+          .slice(0, perPlatform)
+      )
+      return {
+        text: examples.length
+          ? [
+              '<voice_examples>',
+              'Posts Mario published or edited himself — for his voice only. Never reuse their topics, facts, clients or wording.',
+              ...examples.map(
+                ({ row, text }) =>
+                  `<example platform="${row.platform}" status="${row.status}"${row.author === 'me' ? ' by="mario"' : ''}>\n${text}\n</example>`
+              ),
+              '</voice_examples>',
+            ].join('\n')
+          : '',
+        postIds: examples.map((e) => e.row.id),
+      }
     },
 
     async sources(
@@ -192,6 +360,8 @@ export function createContextBuilder(db: DB) {
           lines.push(`URL: ${row.url}`)
           if (meta?.title) lines.push(`Page title: ${meta.title}`)
           if (meta?.description) lines.push(`Page description: ${meta.description}`)
+          // The page couldn't be fetched: nothing is known about it beyond the URL and Mario's words.
+          if (meta?.error) lines.push('Page content: not available (the page could not be fetched)')
         }
         if (analysis?.description) {
           lines.push(`Earlier AI description (unverified): ${analysis.description}`)

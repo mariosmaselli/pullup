@@ -7,7 +7,10 @@ import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
 import { writingProfile } from '../../../services/profiles.ts'
 
-const prompt = loadPrompt('generate-ideas', 'v2')
+const prompt = loadPrompt('generate-ideas', 'v3')
+
+// The most assets one call looks at (a whole project is capped to this many).
+export const MAX_IDEA_SOURCES = 12
 
 export const Output = z.object({
   ideas: z.array(
@@ -25,28 +28,48 @@ export const Output = z.object({
 })
 
 export interface GenerateIdeasInput {
-  assetIds: string[]
+  assetIds?: string[]
+  // A whole project: up to MAX_IDEA_SOURCES of its assets (used when assetIds is empty).
+  projectId?: string
   profileId?: string | null
   instruction?: string
 }
 
 export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Promise<string[]> {
   const { db, provider, context, assets } = deps
-  const rows = assets.rows(input.assetIds)
-  if (!rows.length) throw new AiError('Select at least one asset.', 400)
+  const wholeProject = !input.assetIds?.length && input.projectId
+  if (wholeProject) {
+    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(input.projectId)) {
+      throw new AiError('Project not found', 400)
+    }
+    context.assertProjectAllowed(input.projectId!)
+  }
+  const rows = assets.rows(
+    wholeProject
+      ? context.projectMaterial(input.projectId!, MAX_IDEA_SOURCES)
+      : (input.assetIds ?? []).slice(0, MAX_IDEA_SOURCES)
+  )
+  if (!rows.length) {
+    throw new AiError(
+      wholeProject ? 'This project has no material ready yet.' : 'Select at least one asset.',
+      400
+    )
+  }
+  const assetIds = rows.map((r) => r.id)
 
-  const sources = await context.sources(rows)
-  const projectIds = [...new Set(rows.map((r) => r.project_id).filter((id): id is string => !!id))]
+  // Many items share the image budget: fewer frames per recording so more items are seen.
+  const sources = await context.sources(rows, { maxFramesPerVideo: rows.length > 4 ? 2 : 4 })
+  const projectIds = [
+    ...new Set(
+      [wholeProject ? input.projectId : null, ...rows.map((r) => r.project_id)].filter(
+        (id): id is string => !!id
+      )
+    ),
+  ]
   const profile = writingProfile(db, input.profileId)
 
-  // Existing ideas and posts on this material, to avoid repeats.
-  const covered = db
-    .prepare(
-      `SELECT DISTINCT i.title FROM ideas i JOIN idea_sources s ON s.idea_id = i.id
-       WHERE s.asset_id IN (SELECT value FROM json_each(?)) AND i.status != 'dismissed'
-       ORDER BY i.created_at DESC LIMIT 20`
-    )
-    .all(JSON.stringify(input.assetIds)) as { title: string }[]
+  // Ideas, dismissals and approved/published posts on this material or project: no repeats.
+  const covered = context.covered({ assetIds, projectIds })
 
   const result = await runAi(
     db,
@@ -54,7 +77,13 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
     {
       task: 'generate-ideas',
       promptVersion: prompt.version,
-      inputRefs: { assetIds: input.assetIds, profileId: profile.id },
+      inputRefs: {
+        assetIds,
+        projectId: wholeProject ? input.projectId : undefined,
+        profileId: profile.id,
+        instruction: input.instruction || undefined,
+        covered: covered.counts,
+      },
     },
     {
       system: prompt.system,
@@ -66,7 +95,7 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
           text: [
             `Posting as: ${profile.name}. ${profile.voice_guide}`,
             ...projectIds.map((id) => context.describeProject(id)),
-            covered.length && `Already covered:\n${covered.map((c) => `- ${c.title}`).join('\n')}`,
+            covered.text,
             input.instruction && `Mario's direction: ${input.instruction}`,
             `The material:\n${sources.text}`,
           ]
@@ -106,7 +135,9 @@ export async function generateIdeas(deps: AiDeps, input: GenerateIdeasInput): Pr
         rationale: idea.rationale,
         questions: JSON.stringify(idea.questions),
         profile_id: profile.id,
-        project_id: rows.find((r) => sourceIds.includes(r.id))?.project_id ?? null,
+        project_id:
+          rows.find((r) => sourceIds.includes(r.id))?.project_id ??
+          (wholeProject ? input.projectId! : null),
         ai_run_id: result.runId,
       })
       for (const assetId of sourceIds) insertSource.run(id, assetId)

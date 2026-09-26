@@ -129,7 +129,14 @@ export function createProjectStore(db: DB) {
       if (input.status !== undefined) values.status = input.status
       if (input.isClientWork !== undefined) values.is_client_work = input.isClientWork ? 1 : 0
       if (input.aiAllowed !== undefined) values.ai_allowed = input.aiAllowed ? 1 : 0
-      if (input.tags !== undefined) values.tags = JSON.stringify(input.tags)
+      // Becoming client work turns AI off, like a new client project — unless the same request
+      // says otherwise. Only on the switch itself: existing settings are never changed later.
+      else if (input.isClientWork) {
+        const current = db.prepare('SELECT is_client_work FROM projects WHERE id = ?').get(id) as
+          { is_client_work: number } | undefined
+        if (current && !current.is_client_work) values.ai_allowed = 0
+      }
+      if (input.tags !== undefined) values.tags = JSON.stringify([...new Set(input.tags)])
       if (input.defaultProfileId !== undefined) values.default_profile_id = input.defaultProfileId
 
       const columns = Object.keys(values)

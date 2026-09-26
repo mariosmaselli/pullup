@@ -26,6 +26,12 @@
     border-color: var(--ink);
     color: var(--ink);
   }
+
+  &.-mine {
+    border-color: transparent;
+    color: var(--bg);
+    background: var(--ink);
+  }
 }
 
 .idea-card__saved {
@@ -39,6 +45,7 @@
 }
 
 .idea-card__questions {
+  gap: 8px;
   padding: 10px 12px;
   border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--signal) 7%, transparent);
@@ -48,10 +55,64 @@
     text-transform: uppercase;
   }
 
-  ul {
-    margin-top: 4px;
-    padding-left: 16px;
+  ol {
+    gap: 10px;
+    list-style: none;
   }
+
+  li {
+    gap: 4px;
+  }
+}
+
+.idea-card__answer,
+.idea-card__direction {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  outline: none;
+  resize: vertical;
+  field-sizing: content;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.idea-card__direction {
+  margin-top: 2px;
+}
+
+.idea-card__drafts {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+
+  .-meta {
+    text-transform: uppercase;
+  }
+}
+
+.idea-card__draft {
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--duration) var(--ease-out);
+
+  &:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+.idea-card__confirm {
+  margin-right: 6px;
 }
 
 .idea-card__platforms {
@@ -82,7 +143,9 @@
 }
 
 .idea-card__actions {
+  flex-wrap: wrap;
   gap: 4px;
+  min-height: 28px;
   margin-top: 2px;
 }
 

@@ -55,7 +55,9 @@ export async function revisePost(
 
   const sourceIds = post.idea_id
     ? (
-        db.prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ?').all(post.idea_id) as {
+        db
+          .prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ? ORDER BY rowid')
+          .all(post.idea_id) as {
           asset_id: string
         }[]
       ).map((r) => r.asset_id)

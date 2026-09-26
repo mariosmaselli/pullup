@@ -7,6 +7,7 @@ import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
 import { DraftSchema, type DraftOutput } from '../../schemas.ts'
 import { writingProfile } from '../../../services/profiles.ts'
+import { parseQuestions } from '../../../services/ideas.ts'
 import {
   cleanSegments,
   formatFor,
@@ -15,7 +16,7 @@ import {
 } from '../../../services/posts.ts'
 import type { AssetRow } from '../../../services/assets.ts'
 
-const prompt = loadPrompt('draft-package', 'v1')
+const prompt = loadPrompt('draft-package', 'v2')
 
 export const Output = z.object({
   x: DraftSchema.nullable(),
@@ -33,6 +34,8 @@ interface IdeaRow {
   angle: string | null
   format: string | null
   rationale: string
+  questions: string
+  origin: 'discovery' | 'manual' | 'asset'
   project_id: string | null
 }
 
@@ -61,16 +64,29 @@ export async function draftPackage(
   const idea = db.prepare('SELECT * FROM ideas WHERE id = ?').get(input.ideaId) as
     IdeaRow | undefined
   if (!idea) throw new AiError('Idea not found', 400)
+  // An idea without sources still carries its project's details: that project must allow AI too.
+  context.assertProjectAllowed(idea.project_id)
   const profile = writingProfile(db, input.profileId)
   const styles = JSON.parse(profile.platform_prefs).styles ?? {}
 
   const sourceIds = (
-    db.prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ?').all(idea.id) as {
+    db
+      .prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ? ORDER BY rowid')
+      .all(idea.id) as {
       asset_id: string
     }[]
   ).map((r) => r.asset_id)
   const rows = assets.rows(sourceIds)
   const sources = await context.sources(rows)
+  // The idea's project plus any its sources were assigned to since.
+  const projectIds = [
+    ...new Set(
+      [idea.project_id, ...rows.map((r) => r.project_id)].filter((id): id is string => !!id)
+    ),
+  ]
+  // Mario's own words: his answers to the idea's questions, and posts in his voice.
+  const answered = parseQuestions(idea.questions).filter((q) => q.answer)
+  const voice = context.voiceExamples(platforms, idea.id)
 
   const result = await runAi(
     db,
@@ -78,7 +94,15 @@ export async function draftPackage(
     {
       task: 'draft-package',
       promptVersion: prompt.version,
-      inputRefs: { ideaId: idea.id, profileId: profile.id, platforms, assetIds: sourceIds },
+      inputRefs: {
+        ideaId: idea.id,
+        profileId: profile.id,
+        platforms,
+        assetIds: sourceIds,
+        instruction: input.instruction || undefined,
+        answers: answered.length,
+        voiceExamples: voice.postIds,
+      },
     },
     {
       system: prompt.system,
@@ -90,18 +114,27 @@ export async function draftPackage(
           type: 'text',
           text: [
             `Posting as: ${profile.name}. ${profile.voice_guide}`,
-            context.describeProject(idea.project_id),
+            ...projectIds.map((id) => context.describeProject(id)),
             [
-              `<idea angle="${idea.angle ?? 'any'}">`,
+              `<idea angle="${idea.angle ?? 'any'}" format="${idea.format ?? 'any'}"${idea.origin === 'manual' ? ' by="mario"' : ''}>`,
               `Title: ${idea.title}`,
-              `Summary: ${idea.summary}`,
-              `Why: ${idea.rationale}`,
+              idea.summary && `Summary: ${idea.summary}`,
+              idea.rationale && `Why: ${idea.rationale}`,
               '</idea>',
-            ].join('\n'),
+            ]
+              .filter(Boolean)
+              .join('\n'),
+            answered.length &&
+              [
+                '<answers by="mario">',
+                ...answered.map((q) => `Q: ${q.question}\nA: ${q.answer}`),
+                '</answers>',
+              ].join('\n'),
             `Requested platforms: ${platforms.join(', ')}.`,
             platformRules(platforms, styles),
+            voice.text,
             input.instruction && `Mario's direction: ${input.instruction}`,
-            `The material:\n${sources.text}`,
+            `The material:\n${sources.text || '(none — write from the idea and Mario’s answers only)'}`,
           ]
             .filter(Boolean)
             .join('\n\n'),
@@ -130,7 +163,7 @@ export async function draftPackage(
         postId,
         idea.id,
         profile.id,
-        idea.project_id,
+        idea.project_id ?? projectIds[0] ?? null,
         platform,
         formatFor(platform, segments.length),
         idea.angle

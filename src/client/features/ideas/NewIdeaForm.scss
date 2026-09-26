@@ -1,0 +1,96 @@
+.new-idea-form {
+  gap: 16px;
+  max-width: 980px;
+  margin-bottom: 32px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.new-idea-form__muted,
+.new-idea-form__label {
+  color: var(--muted);
+}
+
+.new-idea-form__label {
+  text-transform: uppercase;
+}
+
+.new-idea-form__input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  outline: none;
+  transition: border-color var(--duration) var(--ease-out);
+
+  &:focus {
+    border-color: var(--muted);
+  }
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.new-idea-form__summary {
+  resize: vertical;
+}
+
+.new-idea-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px 28px;
+}
+
+.new-idea-form__field {
+  gap: 6px;
+  min-width: 0;
+}
+
+.new-idea-form__chips {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.new-idea-form__chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  transition:
+    color var(--duration) var(--ease-out),
+    border-color var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+
+  &:hover {
+    color: var(--ink);
+  }
+
+  &[aria-pressed='true'],
+  &[aria-checked='true'] {
+    border-color: var(--ink);
+    color: var(--ink);
+    background: var(--surface-muted);
+  }
+}
+
+.new-idea-form__project {
+  max-width: 320px;
+}
+
+.new-idea-form__scope {
+  max-width: 280px;
+  margin-bottom: 2px;
+}
+
+.new-idea-form__actions {
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.new-idea-form__error {
+  color: var(--signal);
+}

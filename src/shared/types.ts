@@ -151,12 +151,23 @@ export interface Idea {
   platforms: Platform[]
   rationale: string
   questions: string[]
+  // Mario's answer to each question, same order ('' = not answered yet). Sent to the drafter
+  // as his own words.
+  answers: string[]
   origin: IdeaOrigin
   status: IdeaStatus
   profileId: string | null
   projectId: string | null
   sources: { assetId: string; note: string }[]
+  // Posts written from this idea (discarded ones left out).
+  drafts: IdeaDraft[]
   createdAt: string
+}
+
+export interface IdeaDraft {
+  id: string
+  platform: Platform
+  status: PostStatus
 }
 
 // basis: 'source' = stated in Mario's material, 'framing' = editorial framing,
