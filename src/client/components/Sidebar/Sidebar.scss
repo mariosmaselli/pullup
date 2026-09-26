@@ -1,18 +1,18 @@
 .sidebar {
   width: var(--sidebar-width);
   height: 100%;
-  padding: 28px 16px 20px;
-  gap: 28px;
+  padding: var(--space-40) var(--space-16) var(--space-24);
+  gap: var(--space-32);
   border-right: 1px solid var(--line);
 }
 
 .sidebar__brand {
-  padding: 0 10px;
+  padding: 0 var(--space-8);
   letter-spacing: -0.01em;
 }
 
 .sidebar__capture {
-  padding: 7px 10px;
+  padding: var(--space-8);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   background: var(--surface);
@@ -27,12 +27,8 @@
   }
 }
 
-.sidebar__nav {
-  gap: 2px;
-}
-
 .sidebar__link {
-  padding: 7px 10px;
+  padding: var(--space-8);
   border-radius: var(--radius-m);
   color: var(--muted);
   transition:
@@ -54,6 +50,5 @@
 }
 
 .sidebar__footer {
-  gap: 2px;
   margin-top: auto;
 }
