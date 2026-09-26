@@ -21,6 +21,8 @@
 // - The overview drifts out slowly through the loop point, and a slow orbit (constant speed, a
 //   period that divides the duration) runs under everything; both are periodic, so with the
 //   pull-back ending the last frame matches the first in position and velocity: the reel loops.
+//   Both are at rest at t = 0: the first frame (the cover) is the overview exactly — the sheet
+//   centred on the frame at its laid-out size.
 
 import type { Box, GridLayout } from './layout.ts'
 
@@ -45,6 +47,8 @@ export interface Shot {
 // view when the sheet leaves no room to move between them).
 export interface View extends Shot {
   cells: number[]
+  // The media those cells show (media repeat across the grid).
+  media: number[]
   // The members' row / column when they all share one, else -1 (route rules).
   row: number
   col: number
@@ -296,7 +300,9 @@ export function planTiming(
 // than views, and with the hero ending the view holding the hero is kept for the end (the last
 // stop is the hero itself, returned as -1). On small sheets the route avoids running along an
 // edge row / column (the close-ups there all lean on the same edge); it never steps back and
-// forth along one row or column.
+// forth along one row or column. Media repeat across the grid, so stops prefer media not shown
+// yet, never show the same medium twice running when another is in reach, and keep the hero's
+// medium for the end.
 export function chooseStops(
   views: View[],
   overview: Shot,
@@ -304,6 +310,7 @@ export function chooseStops(
   options: {
     hero: Shot | null
     heroView: number // the view holding the hero's cell (-1: none)
+    heroMedia: number // the hero's medium (-1: none)
     aspect: number // view height / width
     rows: number
     cols: number
@@ -311,8 +318,13 @@ export function chooseStops(
   },
   random: () => number
 ): number[] {
-  const { hero, heroView, aspect, rows, cols, small } = options
+  const { hero, heroView, heroMedia, aspect, rows, cols, small } = options
   const n = views.length
+  // How often each medium has been the subject of a stop.
+  const shown = new Map<number, number>()
+  const seen = (m: number) => shown.get(m) ?? 0
+  // Does every view show the hero's medium (one medium everywhere)? Then it can't wait.
+  const heroEverywhere = views.every((v) => v.media.includes(heroMedia))
   // Distances are read against the view's size, sqrt(w·h) (as in zoomPath).
   const unit = Math.sqrt(aspect)
   const order: number[] = []
@@ -377,6 +389,11 @@ export function chooseStops(
         if (sameRow && prev2 && prev2.row === view.row) return 0
       }
       w /= 1 + 4 * visits[i]! // fresh views first
+      // …and fresh media: a view showing only media already seen weighs less the more they were.
+      if (!view.media.some((m) => !seen(m))) w /= 1 + 3 * Math.min(...view.media.map(seen))
+      // The same medium twice running (a repeat of the last close-up) reads as a stall.
+      if (prev && view.media.some((m) => prev.media.includes(m))) w *= 0.03
+      if (hero && !heroEverywhere && view.media.includes(heroMedia)) w *= 0.03
       // The step before the hero: not right next to it, not across the sheet.
       if (hero && step === count - 2 && n > 1) {
         const h = shotCam(hero)
@@ -391,6 +408,7 @@ export function chooseStops(
     heading = d > 1e-6 ? [(v.x - from.x) / d, (v.y - from.y) / d] : heading
     order.push(i)
     visits[i]!++
+    for (const m of views[i]!.media) shown.set(m, seen(m) + 1)
     from = v
   }
   return order
@@ -530,20 +548,28 @@ export function buildPath(options: {
     return path.at(path.S * seg.ease(u))
   }
 
+  // The orbit is a circle through the rest position, which it passes at t = 0 (and at the loop
+  // point): the cover frame is the planned overview, not a point on the orbit.
   return {
     holds,
     segments: segments.map(({ t0, t1, kind }) => ({ t0, t1, kind })),
     at(time) {
       const c = base(time)
       const a = (2 * Math.PI * time) / period
-      const w = c.w * (1 + BREATH * Math.sin(2 * a + p1))
+      const w = c.w * (1 + BREATH * (Math.sin(2 * a + p1) - Math.sin(p1)))
       return {
-        x: c.x + ORBIT * c.w * Math.cos(a + p0),
-        y: c.y + ORBIT * 0.8 * c.w * Math.sin(a + p0),
+        x: c.x + ORBIT * c.w * (Math.cos(a + p0) - Math.cos(p0)),
+        y: c.y + ORBIT * 0.8 * c.w * (Math.sin(a + p0) - Math.sin(p0)),
         w,
       }
     },
   }
+}
+
+// Camera: Still — the overview, held.
+export function stillPath(overview: Shot): CameraPath {
+  const cam = shotCam(overview)
+  return { holds: [], segments: [], at: () => ({ ...cam }) }
 }
 
 // ── Framing ────────────────────────────────────────────────────────────────────────────────
@@ -556,8 +582,12 @@ const CLOSE_MAX = 0.92
 // spans the box at the overview (a single column of wide cells).
 const FRAME_MARGIN = 28
 
-// The overview and the close-ups, for a grid laid out to fit `box` (design px, frame coordinates;
-// the design frame is dw × dh). World units are design px at the overview.
+// The overview and the close-ups, for a grid laid out to fit `layoutBox` (design px, frame
+// coordinates; the design frame is dw × dh). World units are design px at the overview. The
+// overview shows the sheet where it was laid out: centred on the frame (the layout box is
+// centred), else as close to centre as the layout box allows. Close-ups are framed in `box`, the
+// frame's free area — inside the margins, clear of the type at the top and bottom (the layout box
+// is that area made symmetric, so it can be smaller). `heroCell`: the cell the Hero ending ends on.
 //
 // A close-up puts its cell at the box centre, magnified so the cell fills about 85% of the box
 // (the zoom control), then slides it toward the grid so the sheet's edge never comes into the box
@@ -567,15 +597,32 @@ const FRAME_MARGIN = 28
 // clamped and collapse together (merged into one), and the route travels along the axis that
 // has room. The focused cell always keeps a margin: at most 92% of the box, and a cell that
 // already spans the box (a single column) is never magnified past the frame.
-export function framing(grid: GridLayout, box: Box, dw: number, dh: number, zoom: number) {
-  // The box centre's offset from the frame centre (design px, y down), as a share of dw.
+export function framing(
+  grid: GridLayout,
+  layoutBox: Box,
+  box: Box,
+  dw: number,
+  dh: number,
+  zoom: number,
+  heroCell = 0
+) {
+  // The overview: the sheet centred on the frame when the layout box is (it pushes toward the
+  // sheet's centre, so it stays centred through its drift), else as close to centre as it allows.
+  const top = Math.min(
+    layoutBox.y + layoutBox.h - grid.height,
+    Math.max(layoutBox.y, (dh - grid.height) / 2)
+  )
+  const overview: Shot = {
+    ax: 0,
+    ay: 0,
+    kx: (layoutBox.x + layoutBox.w / 2 - dw / 2) / dw,
+    ky: (top + grid.height / 2 - dh / 2) / dw,
+    w: dw,
+  }
+  // Close-ups: the view box centre's offset from the frame centre (design px, y down), as a share
+  // of dw.
   const kx = (box.x + box.w / 2 - dw / 2) / dw
   const ky = (box.y + box.h / 2 - dh / 2) / dw
-  // The overview centres the sheet on the frame when it fits clear of the caption (the type then
-  // reads as a footnote to a centred composition), else as close to centre as the box allows. It
-  // pushes toward the sheet's centre.
-  const top = Math.min(box.y + box.h - grid.height, Math.max(box.y, (dh - grid.height) / 2))
-  const overview: Shot = { ax: 0, ay: 0, kx, ky: (top + grid.height / 2 - dh / 2) / dw, w: dw }
 
   const { cellW, cellH } = grid
   const fill = Math.min(box.w / cellW, box.h / cellH)
@@ -594,8 +641,8 @@ export function framing(grid: GridLayout, box: Box, dw: number, dh: number, zoom
   const spread = (values: number[]) => Math.max(...values) - Math.min(...values)
   const xs = grid.cells.map((c) => c.x)
   const ys = grid.cells.map((c) => c.y)
-  const cols = Math.max(...grid.rows)
-  const R = grid.rows.length
+  const cols = grid.cols
+  const R = grid.rows
   // Neighbouring views at least half a pitch apart (and the outer ones most of the way out).
   const needX = cols > 1 ? Math.min(0.4 * spread(xs), 0.5 * grid.pitchX) : 0
   const needY = R > 1 ? Math.min(0.4 * spread(ys), 0.5 * grid.pitchY) : 0
@@ -670,16 +717,16 @@ export function framing(grid: GridLayout, box: Box, dw: number, dh: number, zoom
       ky,
       w: dw / mag,
       cells: members.map((i) => grid.cells[i]!.index),
+      media: [...new Set(members.map((i) => grid.cells[i]!.media))],
       row: rows.size === 1 ? first.row : -1,
-      // Columns only mean something when the rows line up (full rows).
-      col: colsOf.size === 1 && new Set(grid.rows).size === 1 ? first.col : -1,
+      col: colsOf.size === 1 ? first.col : -1,
     }
   })
 
-  // The hero (Ending: Hero, the first medium): centred in the box and closer — the cap.
+  // The hero (Ending: Hero, a cell of the first medium): centred in the box and closer — the cap.
   const heroMag = Math.max(mag, cap)
-  const first = grid.cells[0]!
-  const hero: Shot = { ax: first.x, ay: first.y, kx, ky, w: dw / heroMag }
+  const heroAt = grid.cells[heroCell] ?? grid.cells[0]!
+  const hero: Shot = { ax: heroAt.x, ay: heroAt.y, kx, ky, w: dw / heroMag }
   return { overview, views, cellView, hero, mag, heroMag }
 }
 
@@ -705,6 +752,7 @@ export function planCamera(options: {
   views: View[]
   cellView: number[]
   hero: Shot // the last stop with the Hero ending
+  heroCell: number
   stops: number | 'Auto'
   pace: Pace
   ending: Ending
@@ -714,7 +762,8 @@ export function planCamera(options: {
   const { grid, views } = options
   const V = views.length
   let seed = Math.floor(options.random() * 4294967296)
-  for (const r of grid.rows) seed = Math.imul(seed ^ (r + 0x9e3779b9), 0x85ebca6b) >>> 0
+  for (const k of [grid.rows, grid.cols, ...grid.cells.map((c) => c.media)])
+    seed = Math.imul(seed ^ (k + 0x9e3779b9), 0x85ebca6b) >>> 0
   seed = Math.imul(seed ^ grid.cells.length, 0xc2b2ae35) >>> 0
   const random = seeded(seed)
   const hero = options.ending === 'Hero'
@@ -735,10 +784,11 @@ export function planCamera(options: {
     timing.stops,
     {
       hero: hero ? options.hero : null,
-      heroView: hero ? options.cellView[0]! : -1,
+      heroView: hero ? options.cellView[options.heroCell]! : -1,
+      heroMedia: hero ? (grid.cells[options.heroCell]?.media ?? 0) : -1,
       aspect: options.aspect,
-      rows: grid.rows.length,
-      cols: Math.max(...grid.rows),
+      rows: grid.rows,
+      cols: grid.cols,
       small: grid.cells.length <= 6,
     },
     random
