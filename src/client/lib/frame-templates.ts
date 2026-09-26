@@ -44,12 +44,129 @@ export function compatibleTemplates(platform: Platform, kinds: MediaKind[]): Tem
 }
 
 // First choice per kind of frame; missing templates are skipped, then any compatible one is used.
-// `default` (templates/default) is the one template for text, an image or a clip.
+// `default` is the one template for text, an image or a clip (templates/default).
 const PREFERRED = {
-  text: ['default', 'text-story'],
-  image: ['default', 'image-caption'],
-  video: ['default', 'video-caption'],
+  text: ['default'],
+  image: ['default'],
+  video: ['default'],
   several: ['media-grid'],
+}
+
+// ── Templates folded into Default ──────────────────────────────────────────────────────────
+// text-story, text-reveal, image-caption and video-caption became templates/default (their code
+// is in git history). A frame saved with one of them opens as Default with what it had: its
+// settings and labels under Default's keys, and the old template's own look where Default's
+// defaults differ (text-reveal's words rising in and lines leaving, video-caption's fade).
+
+type Params = Record<string, unknown>
+type Upgrade = (params: Params, text: Record<string, string>) => { params: Params; text: Params }
+
+// Old key → Default's key, for the values that mean the same there.
+const rename = (values: Params, keys: Record<string, string>): Params =>
+  Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) => (keys[key] ? [[keys[key], value]] : []))
+  )
+const same = (keys: string[]) => Object.fromEntries(keys.map((key) => [key, key]))
+const GROUND = same(Object.keys(BACKGROUND_PARAMS))
+const TYPE = same(['weight', 'textPosition', 'textAlign'])
+const MEDIA = same(['size', 'scale', 'focusX', 'focusY', 'gradient'])
+// image-caption / video-caption: the label (top left) and the date / index (top right).
+const CORNERS = { label: 'labelTopLeft', index: 'labelTopRight' }
+
+const LEGACY: Record<string, { duration?: number; upgrade: Upgrade }> = {
+  // (`size` was the type size there; in Default it is the media size.)
+  'text-story': {
+    upgrade: (params) => ({
+      params: rename(params, { ...GROUND, ...TYPE, color: 'textColor', size: 'textSize' }),
+      text: {},
+    }),
+  },
+  'text-reveal': {
+    duration: 5,
+    upgrade: (params, text) => ({
+      params: {
+        animation: 'Reveal',
+        revealBy: 'Words',
+        exit: 'Rise',
+        ...rename(params, {
+          ...GROUND,
+          ...TYPE,
+          color: 'textColor',
+          size: 'textSize',
+          accent: 'accent',
+          reveal: 'revealBy',
+          exit: 'exit',
+        }),
+      },
+      text: rename(text, { label: 'labelTopLeft' }),
+    }),
+  },
+  'image-caption': {
+    upgrade: (params, text) => ({
+      params: rename(params, {
+        ...GROUND,
+        ...TYPE,
+        ...MEDIA,
+        color: 'textColor',
+        typeSize: 'textSize',
+      }),
+      text: rename(text, CORNERS),
+    }),
+  },
+  'video-caption': {
+    upgrade: (params, text) => {
+      // Its Rise came out of a mask line by line: Default's Reveal by lines. Its default was Fade.
+      const animation = params.animation ?? 'Fade'
+      return {
+        params: {
+          ...rename(params, {
+            ...GROUND,
+            ...TYPE,
+            ...MEDIA,
+            color: 'textColor',
+            typeSize: 'textSize',
+          }),
+          ...(animation === 'Rise' ? { animation: 'Reveal', revealBy: 'Lines' } : { animation }),
+        },
+        text: rename(text, CORNERS),
+      }
+    },
+  },
+}
+
+// The template a frame opens with: one folded into Default becomes Default (see LEGACY) — only
+// while its own folder is gone and Default exists; anything else is returned as it is.
+export function upgradeTemplate<T extends FrameTemplate | null | undefined>(
+  template: T
+): T | FrameTemplate {
+  const legacy = template ? LEGACY[template.id] : undefined
+  const meta = templateMeta('default')
+  if (!template || !legacy || !meta || templateMeta(template.id)) return template
+  const { id: _, params = {}, text = {}, ...rest } = template
+  const next = legacy.upgrade(params, text)
+  const upgraded: FrameTemplate = { ...rest, id: meta.id }
+  if (upgraded.duration === undefined && legacy.duration !== undefined) {
+    upgraded.duration = legacy.duration
+  }
+  // Only settings that differ from Default's (and are still valid there) are kept.
+  const kept = Object.fromEntries(
+    Object.entries(changedParams(meta, next.params)).filter(([key, value]) => {
+      const spec = meta.params![key]!
+      return spec.type !== 'select' || spec.options.includes(String(value))
+    })
+  )
+  if (Object.keys(kept).length) upgraded.params = kept
+  const labels = Object.fromEntries(
+    Object.entries(next.text).filter(([, value]) => typeof value === 'string' && value)
+  ) as Record<string, string>
+  if (Object.keys(labels).length) upgraded.text = labels
+  return upgraded
+}
+
+// Where an old studio link (/templates/text-story…) goes: a template folded into Default opens
+// Default — under the same conditions as upgradeTemplate(). Null for anything else.
+export function foldedInto(id: string): string | null {
+  return LEGACY[id] && !templateMeta(id) && templateMeta('default') ? 'default' : null
 }
 
 export function defaultTemplate(platform: Platform, kinds: MediaKind[]): FrameTemplate | null {
@@ -64,12 +181,12 @@ export function defaultTemplate(platform: Platform, kinds: MediaKind[]): FrameTe
   return id ? { id } : null
 }
 
-// The frame with its effective template: its own choice while that template exists and fits the
-// frame's media, otherwise the default.
+// The frame with its effective template: its own choice (a template folded into Default opens as
+// Default) while that template exists and fits the frame's media, otherwise the default.
 export function withTemplate(platform: Platform, frame: Segment, kinds: MediaKind[]): Segment {
-  const template = frame.template
+  const template = upgradeTemplate(frame.template)
   if (template && compatibleTemplates(platform, kinds).some((meta) => meta.id === template.id)) {
-    return frame
+    return template === frame.template ? frame : { ...frame, template }
   }
   return { ...frame, template: defaultTemplate(platform, kinds) }
 }
@@ -84,9 +201,11 @@ export function extraTextFields(meta: TemplateMeta): [string, TextFieldSpec][] {
 // sits — when the new template takes one too, and the text fields it shares (the labels).
 // Everything else starts from the new template's defaults.
 export function switchTemplate(
-  current: FrameTemplate | null | undefined,
+  previous: FrameTemplate | null | undefined,
   id: string
 ): FrameTemplate {
+  const current = upgradeTemplate(previous)
+  // The same template (e.g. a folded one "switching" to Default): nothing to drop.
   if (current?.id === id) return current
   const next = templateMeta(id)
   const template: FrameTemplate = { id }

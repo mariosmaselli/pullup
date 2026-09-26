@@ -12,6 +12,7 @@ import { SettingsView } from './features/settings/SettingsView.tsx'
 import { TemplatesView } from './features/templates/TemplatesView.tsx'
 import { TemplateStudio } from './features/template/TemplateStudio.tsx'
 import { TrashView } from './features/trash/TrashView.tsx'
+import { foldedInto } from './lib/frame-templates.ts'
 
 const rootRoute = createRootRoute({ component: AppShell })
 
@@ -71,6 +72,11 @@ const templateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/templates/$id',
   component: TemplateStudio,
+  // Links to a template folded into Default (text-story, text-reveal…) open Default.
+  beforeLoad: ({ params }) => {
+    const id = foldedInto(params.id)
+    if (id) throw redirect({ to: '/templates/$id', params: { id }, replace: true })
+  },
 })
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,

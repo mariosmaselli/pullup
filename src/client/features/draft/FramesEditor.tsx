@@ -15,6 +15,7 @@ import {
   frameMediaKinds,
   frameOutputKind,
   switchTemplate,
+  upgradeTemplate,
   withFrameText,
   withTemplate,
   type MediaKind,
@@ -122,7 +123,8 @@ export function FramesEditor(props: Props) {
   // frame falls back to the default for its media — keeping its labels and background when it has
   // some (the default takes them too), else as no choice at all.
   const setMedia = (i: number, ids: string[]) => {
-    const template = segments[i]!.template
+    // (A template folded into Default counts as Default: it keeps its settings.)
+    const template = upgradeTemplate(segments[i]!.template)
     const kinds = ids.map(kindOf)
     const fits = compatibleTemplates(platform, kinds).some((m) => m.id === template?.id)
     const fallback = defaultTemplate(platform, kinds)

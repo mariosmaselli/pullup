@@ -6,7 +6,7 @@ frame-by-frame, so a 6 s 1080×1920 WebGL video renders in about a second.
 
 ```
 templates/
-  _lib/            shared helpers (layout options, backgrounds, caption card, text drawing, Three.js) — not a template
+  _lib/            shared helpers (base layer, layout options, backgrounds, text, Three.js) — not a template
   my-template/
     meta.ts        export const meta: TemplateMeta   ← name, formats, inputs, fonts
     index.ts       export default (ctx) => ({ setup, update, render, dispose })
@@ -14,12 +14,87 @@ templates/
 
 New folders show up in **Templates** automatically (Vite picks them up; no registration).
 The full contract with comments is in [`src/shared/template.ts`](../src/shared/template.ts).
-Look at [`text-story`](text-story) (canvas 2D still), [`image-caption`](image-caption) (canvas
-2D media + type) and [`video-caption`](video-caption) (the same card over a clip) first;
-Kept in git history, removed because they didn't meet Mario's bar (useful as code references,
+Look at [`default`](default) first — the base layer over a background and one optional image or
+clip, canvas 2D, a still or a video depending on its settings — then [`media-grid`](media-grid)
+(three.js, many media, the base layer as an overlay).
+
+`default` replaced `text-story`, `text-reveal`, `image-caption` and `video-caption` (and the
+`_lib/caption.ts` card the last two shared); they are in git history, and builder frames saved
+with them open as Default with their settings carried over (`upgradeTemplate` in
+[`src/client/lib/frame-templates.ts`](../src/client/lib/frame-templates.ts)).
+Also kept in git history, removed because they didn't meet Mario's bar (useful as code references,
 not as designs): `slow-zoom`, `case-study-cover`, `planes-3d` (commit 4bfcd7c) and
 `crossfade-slideshow`, `shader-transition` (Three.js multi-clip transitions, video decode in a
 custom shader), `device-frame` (3D device scene) — commit 2d3c978.
+
+## Still, video or both: `kind`
+
+`meta.kind` is `'still'` (a JPEG: one frame at t = 0), `'video'` (an MP4) or `'auto'`: the
+template decides per render with `meta.outputKind(inputs)` → `'still' | 'video'`, from the kinds
+of the media and background and the text and params (defaults filled in). Keep it pure and cheap —
+it runs on the main thread on every settings change. The engine, the render record, the output
+checks, the studio (Render JPEG / MP4, transport, duration) and the builder (duration, "· video",
+the zip) all use the resolved kind; read it with `resolveOutputKind(meta, inputs)`
+(`src/shared/template.ts`), never from `meta.kind`. Inside the template it is `ctx.kind`; a still
+has `ctx.duration = 0` — draw the settled state. `'auto'` templates declare `fps` and `duration`
+like videos. Functions don't cross to the worker: Pullup posts `metaData(meta)` and the kind.
+
+The base layer's `baseOutputKind` is a still when nothing moves: no video media or background,
+and no type animation (or no type).
+
+## The base layer: caption, corner labels, legibility
+
+[`_lib/base.ts`](_lib/base.ts) is the type every template shares — a caption in Mario's story type
+and four one-line corner labels — laid out, animated and drawn one way, with the legibility
+gradient only where that type sits over media. At its defaults (no labels, animation None) it is
+the old `text-story` pixel for pixel; `animation: 'Reveal'` + `exit: 'Rise'` is the old
+`text-reveal`'s motion frame for frame.
+
+```ts
+// meta.ts
+kind: 'auto', outputKind: baseOutputKind, fonts: BASE_FONTS,
+text: TEXT_FIELDS,                                   // caption (first: the builder's frame text) + 4 labels
+params: { ...MEDIA_PARAMS, ...TEXT_PARAMS, ...SCRIM_PARAMS, ...BACKGROUND_PARAMS },
+
+// index.ts (canvas 2D)
+setup():  background = createBackground2D(ctx); media = await createMedia2D(ctx); base = await createBase(ctx)
+update(t): media.update(t); if (!media.hidesGround) background.update(t); base.update(t)
+render(): background.draw(g); media.draw(g); base.draw(g, media.rect)
+```
+
+(`background.draw` still paints the ground colour under a covering clip until its first frame is
+decoded; only the background video's decoding is skipped, by not seeking it.)
+
+| Export                                                                                         | What                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TEXT_FIELDS` = `CAPTION_FIELD` + `LABEL_FIELDS`                                               | `caption` (multiline, `*accent*`), `labelTopLeft`, `labelTopRight`, `labelBottomLeft`, `labelBottomRight` (one line, 40, optional, empty by default); `LABEL_KEYS`                                                                                                                                            |
+| `TEXT_PARAMS`                                                                                  | `textColor` #ffffff, `textSize` 48–160 (84), `weight` Regular/Medium, `textPosition` Top/Middle/Bottom, `textAlign` Left/Center, `accent` #ff5b2e, `animation` None/Fade/Rise/Reveal (None), `revealBy` Words/Lines (shown with Reveal), `exit` None/Fade/Rise (None)                                         |
+| `MEDIA_PARAMS`                                                                                 | `size` Fill/Fit, `scale`, `focusX`, `focusY` — `MEDIA_SIZE_PARAMS`, shown once there is media                                                                                                                                                                                                                 |
+| `SCRIM_PARAMS`                                                                                 | `gradient` 0–1 (0.55): the legibility gradient's strength (shown with media)                                                                                                                                                                                                                                  |
+| `textSettings(params)`                                                                         | the values above, read tolerantly                                                                                                                                                                                                                                                                             |
+| `createBase(ctx, { captionKey?, margins? })`                                                   | → `BaseLayer`: `update(t)`, `draw(g, mediaRect)`, `drawScrim(g, rect \| null)`, `drawType(g, rect \| LabelGround?)`, `caption` / `labels` / `edges` (ink boxes, for framing content clear of the type), `scrims` (bands, with each piece of type's ink) + `tint` + `scrimLevel()` (for shaders), `stateKey()` |
+| `createMedia2D(ctx, i = 0)`                                                                    | the media sized by `MEDIA_PARAMS`: `rect`, `covers`, `hidesGround`, `update(t)`, `draw(g)`                                                                                                                                                                                                                    |
+| `createBaseOverlay(ctx, base, { scrim, labels })` ([`_lib/base-three.ts`](_lib/base-three.ts)) | three.js: the layer on a transparent canvas texture, redrawn when it moves, drawn over the frame with `overlay.render(renderer)`; `scrim: 'frame' \| rect \| null`; `labels`: a `LabelGround` (how much picture is under each label this frame)                                                               |
+
+Layout: margins from `FRAME_MARGINS` (`_lib/layout.ts`: 160 px top/bottom on stories, 40 px
+elsewhere, 40 px sides). Caption line boxes sit on the margins (text-story); top labels' cap tops
+sit on the top margin, bottom labels' baselines on the bottom margin; with labels on an edge the
+caption keeps 56 px of ink clear of them and shrinks (×0.95, down to 32 px) if it must. A left and
+right label that would meet are shortened with an ellipsis. On 16:9 the caption measure is capped
+at 1240 px and its lines are balanced (the measure narrows while the line count holds, until each
+paragraph's last line is ≥ 45% of its longest); other formats keep text-story's breaks. Motion: Fade — lines fade in (0.3 s, 80 ms apart); Rise — lines drift up 0.4 line as
+they fade in; Reveal — words or lines rise out of per-line masks (text-reveal's timing); the
+labels come in with the first line. Exit Rise — lines leave through the top of their masks
+(labels first); Fade — everything fades. The exit ends 0.25 s before the last frame. The gradient
+(tinted dark under light type, off-white under dark) is clipped to the media rect, skipped where
+the type isn't over the media, and fades in and out with the type. Labels get the caption's
+strength, held from the frame's edge through their ink (small type needs the most contrast: at
+0.55 a white page goes to #7c7c7c, ≈ 4.2:1 under white). Bands whose fades run into each other (a
+Middle caption between labels on a square) are drawn as one, held between them, not as stripes.
+Labels are the text colour at 60% on a plain ground and solid over a picture (the media rect
+passed to `draw` / `drawType`, a `LabelGround` — the grid's cells under them — or a background
+image / video; `drawType(g)` alone: solid whenever there is media) — 60% white over a photo turns
+muddy. Accents: `_lib/accent.ts`.
 
 ## Shared options: media size and text position
 
@@ -48,6 +123,15 @@ bottom-left on the story margins.
 
 Every new option reduces to the previous look at its default.
 
+A param can say when its control shows — `when: { param: 'animation', is: ['Reveal'] }` or
+`when: { media: true }` (both must hold if both are set) — so the studio and a frame's Options
+only list controls that do something. The value still applies when hidden. Data only (`meta` is
+posted to the worker); `paramVisible(spec, { params, media })` in `src/shared/template.ts`.
+
+Text fields: in the builder the first field is the frame's own text; the others (the labels)
+are edited in the frame's Options, stored on the frame as `template.text`, start empty and never
+take the field's `default` (that is sample copy for the Templates studio).
+
 Helpers (all in canvas px):
 
 - `mediaSize(ctx.params)` / `textPlacement(ctx.params)` — read the values, tolerating missing or
@@ -59,10 +143,7 @@ Helpers (all in canvas px):
   on the frame, kept inside the margins).
 - `textLineX(frameW, lineW, align, side)` → x of one line (`ctx.layoutText` lines carry `width`).
 
-[`_lib/caption.ts`](_lib/caption.ts) is the whole "media + caption" card built on these (caption,
-corner label/index, gradient that follows the caption and only darkens the media, optional per-line
-fade/rise) — `image-caption` and `video-caption` are thin wrappers around it. Share code between
-templates through `_lib/`, never by importing another template's folder.
+Share code between templates through `_lib/`, never by importing another template's folder.
 
 ## Backgrounds: colour, image or video
 
@@ -106,8 +187,8 @@ scene.add(background.mesh) // clip-space quad, drawn first and behind everything
 
 - **Video backgrounds hold their last frame** past the clip's end, like media (a loop would cut
   visibly mid-reel). `update(t)` seeks them; skip it — and skip drawing the background — when
-  something opaque covers the frame, so the clip isn't decoded for nothing (`_lib/caption.ts`
-  does this for a full-bleed video).
+  something opaque covers the frame, so the clip isn't decoded for nothing (`default` skips
+  `update` under a full-bleed clip — `media.hidesGround`).
 - The three.js background is painted by the same canvas code and uploaded as an sRGB texture:
   the look is identical to the 2D one and there is no colour handling to do (its material already
   ends with `<colorspace_fragment>`; nothing to decode by hand).
@@ -163,8 +244,9 @@ instance its own bitmap, so closing it is safe.
     the bitrate over Instagram's limit.
   - Check colour with a real recording, not a test pattern of pure colours (it can't show gamma
     errors).
-- **Design units:** layout is designed at 1080 px wide; multiply by `ctx.scale` (the preview is
-  half size).
+- **Design units:** layout is designed at 1080 px on the frame's short side (1080 wide for
+  9:16, 4:5 and 1:1; 1080 tall for 16:9); multiply by `ctx.scale` (the preview is half size).
+  `ctx.width / ctx.scale` is the design width (1920 on 16:9).
 - **Images** come upright and colour-managed (≤ 2160 px). For Three.js use `imageTexture()` from
   `_lib/three.ts` (it handles the ImageBitmap flip).
 - **Videos** are decoded from a proxy (30 fps, keyframe every 15 frames). Hold the last frame past
@@ -174,7 +256,9 @@ instance its own bitmap, so closing it is safe.
 
 ## Output
 
-- Stories/reels **9:16** (1080×1920), feed/carousel **4:5** (1080×1350), square **1:1**.
+- Stories/reels **9:16** (1080×1920), feed/carousel **4:5** (1080×1350), square **1:1**, wide
+  **16:9** (1920×1080 — X, LinkedIn, YouTube). One list: `ASPECTS` / `ASPECT_SIZE` /
+  `ASPECT_LABEL` in `src/shared/template.ts`. Builder frames stay 9:16 (stories) and 4:5 (feed).
 - Video: H.264 High, 30 fps, 14 Mbps, keyframe every second, no B-frames, fast start, BT.709.
 - Stills: JPEG, quality 0.92.
 - Every render is checked against Instagram's upload rules; warnings show under the result.
