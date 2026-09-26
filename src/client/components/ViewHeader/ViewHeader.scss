@@ -10,3 +10,25 @@
   max-width: 56ch;
   color: var(--muted);
 }
+
+// Every control in a page header is the same height, whatever size the page asked for.
+.view-header__actions {
+  gap: var(--space-8);
+
+  .button {
+    height: 48px;
+    padding: 0 var(--space-16);
+  }
+
+  .segmented {
+    height: 48px;
+    padding: var(--space-8);
+  }
+
+  .segmented__option {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 var(--space-16);
+  }
+}

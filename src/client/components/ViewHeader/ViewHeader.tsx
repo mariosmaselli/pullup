@@ -14,7 +14,9 @@ export function ViewHeader({ title, description, actions }: Props) {
         <h1 className="-t1">{title}</h1>
         {description ? <p className="view-header__description -p">{description}</p> : null}
       </div>
-      {actions ? <div className="flex items-center shrink-0">{actions}</div> : null}
+      {actions ? (
+        <div className="view-header__actions flex items-center shrink-0">{actions}</div>
+      ) : null}
     </header>
   )
 }
