@@ -6,6 +6,7 @@ import { frameAssetIds } from '@shared/frames.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
+import { ProjectPicker } from '../../components/ProjectPicker/ProjectPicker.tsx'
 import type { ApiError } from '../../lib/api.ts'
 import { assetTitle, relativeTime } from '../../lib/format.ts'
 import { ANGLE_LABEL, STATUS_LABEL } from '../../lib/labels.ts'
@@ -13,9 +14,11 @@ import { PLATFORMS } from '../../lib/platforms.ts'
 import {
   useAssets,
   usePost,
+  useProjects,
   useRestoreRevision,
   useRevisePost,
   useSavePostRevision,
+  useSystem,
   useUpdatePost,
 } from '../../lib/queries.ts'
 import { isDue, useNow } from '../../lib/due.ts'
@@ -29,6 +32,10 @@ const BASIS_LABEL: Record<Claim['basis'], string> = {
   framing: 'Framing',
   unconfirmed: 'Confirm before posting',
 }
+
+// Positions of the 'unconfirmed' claims Mario has checked off.
+const checkedOff = (claims: Claim[]) =>
+  claims.flatMap((c, i) => (c.basis === 'unconfirmed' && c.confirmed ? [i] : []))
 
 const sameContent = (a: Segment[], b: Segment[]) =>
   JSON.stringify(a.map((s) => [s.text, frameAssetIds(s), s.template ?? null])) ===
@@ -96,10 +103,19 @@ function DraftEditor({
   const [segments, setSegments] = useState<Segment[]>(initial)
   const [caption, setCaption] = useState(initialCaption)
   const [copied, setCopied] = useState<number | 'all' | null>(null)
+  const claims = post.current?.claims ?? []
+  const initialConfirmed = checkedOff(claims)
+  const [confirmed, setConfirmed] = useState<number[]>(initialConfirmed)
+  const { data: system } = useSystem()
+  const { data: projects } = useProjects()
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
   const sources = post.sourceAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
   const media = post.mediaAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
+  const library = useMemo(
+    () => assets.filter((a) => a.kind === 'image' || a.kind === 'video'),
+    [assets]
+  )
   const shownMedia = config.frames
     ? [...new Set(segments.flatMap(frameAssetIds))]
         .map((id) => byId.get(id))
@@ -107,7 +123,10 @@ function DraftEditor({
     : media
   const privateMedia = shownMedia.filter((a) => a.visibility === 'private')
 
-  const dirty = !sameContent(segments, initial) || caption !== initialCaption
+  const claimsChanged =
+    confirmed.length !== initialConfirmed.length ||
+    confirmed.some((i) => !initialConfirmed.includes(i))
+  const dirty = !sameContent(segments, initial) || caption !== initialCaption || claimsChanged
 
   // Unsaved edits live only in this editor: leaving the draft (another platform tab, the sidebar,
   // a reload) would drop them silently. Discarding the draft is a deliberate exit, so it skips this.
@@ -127,8 +146,29 @@ function DraftEditor({
     (save.variables?.id === post.id ? save.error : null) ??
     update.error ??
     restore.error) as ApiError | null
-  const claims = post.current?.claims ?? []
-  const unconfirmed = claims.filter((c) => c.basis === 'unconfirmed')
+  const unconfirmed = claims.filter((c, i) => c.basis === 'unconfirmed' && !confirmed.includes(i))
+  // Why "Revise with AI" can't run for this post, if it can't.
+  const project = projects?.find((p) => p.id === post.projectId)
+  const aiOff =
+    project && !project.aiAllowed
+      ? `AI is off for “${project.name}”. Allow it on the project page to revise with AI — or edit by hand.`
+      : system && !system.ai.enabled
+        ? 'AI is off: add an API key in Settings to revise with AI. You can still edit by hand.'
+        : null
+  const shelved = post.status === 'archived' || post.status === 'discarded'
+  // Restoring: an archived post that went out goes back to published, anything else to draft.
+  const restoreTo: PostStatus =
+    post.status === 'archived' && post.publishedAt ? 'published' : 'draft'
+  const leave = (status: PostStatus) =>
+    update.mutate(
+      { id: post.id, status },
+      {
+        onSuccess: () => {
+          leaving.current = true
+          navigate({ to: '/drafts' })
+        },
+      }
+    )
   // Platforms with more than one draft get their angle in the tab label.
   const repeated = new Set(
     post.siblings.map((s) => s.platform).filter((p, i, all) => all.indexOf(p) !== i)
@@ -148,7 +188,12 @@ function DraftEditor({
   const saveEdits = (then?: () => void) => {
     revise.reset()
     save.mutate(
-      { id: post.id, segments, caption: config.caption ? caption : null },
+      {
+        id: post.id,
+        segments,
+        caption: config.caption ? caption : null,
+        confirmedClaims: claims.length ? confirmed : undefined,
+      },
       { onSuccess: then }
     )
   }
@@ -223,6 +268,19 @@ function DraftEditor({
               <span className="draft-view__status -meta" data-status={due ? 'due' : post.status}>
                 {due ? 'Due' : STATUS_LABEL[post.status]}
               </span>
+            ) : shelved ? (
+              <div className="draft-view__restore flex items-center">
+                <span className="draft-view__status -meta" data-status={post.status}>
+                  {STATUS_LABEL[post.status]}
+                </span>
+                <Button
+                  size="s"
+                  disabled={update.isPending}
+                  onClick={() => update.mutate({ id: post.id, status: restoreTo })}
+                >
+                  {restoreTo === 'published' ? 'Unarchive' : 'Restore to draft'}
+                </Button>
+              </div>
             ) : (
               <Segmented<PostStatus>
                 label="Status"
@@ -258,9 +316,11 @@ function DraftEditor({
               />
             ) : (
               <TextPostEditor
+                postId={post.id}
                 platform={post.platform}
                 segments={segments}
                 media={media}
+                library={library}
                 copied={copied}
                 onChange={setSegments}
                 onCopy={copy}
@@ -276,6 +336,7 @@ function DraftEditor({
                 onClick={() => {
                   setSegments(initial)
                   setCaption(initialCaption)
+                  setConfirmed(initialConfirmed)
                 }}
               >
                 Discard edits
@@ -306,53 +367,67 @@ function DraftEditor({
           {/* Revise with AI */}
           <div className="draft-view__revise flex flex-col">
             <span className="draft-view__label -meta">Revise with AI</span>
-            <div className="draft-view__quick flex">
-              {config.quick.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className="draft-view__chip -p1"
-                  disabled={busy}
-                  onClick={() => runRevision(q)}
+            {aiOff ? (
+              <p className="draft-view__muted -p1">{aiOff}</p>
+            ) : (
+              <>
+                <div className="draft-view__quick flex">
+                  {config.quick.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="draft-view__chip -p1"
+                      disabled={busy}
+                      onClick={() => runRevision(q)}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+                <form
+                  className="draft-view__instruction flex items-center"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    runRevision(instruction)
+                  }}
                 >
-                  {q}
-                </button>
-              ))}
-            </div>
-            <form
-              className="draft-view__instruction flex items-center"
-              onSubmit={(e) => {
-                e.preventDefault()
-                runRevision(instruction)
-              }}
-            >
-              <input
-                className="flex-1 -p"
-                value={instruction}
-                placeholder="Or say what to change — e.g. focus on the animation, not the design"
-                onChange={(e) => onInstruction(post.id, e.target.value)}
-                disabled={busy}
-              />
-              <Button
-                variant="primary"
-                size="s"
-                type="submit"
-                disabled={busy || !instruction.trim()}
-              >
-                {revising ? 'Revising…' : 'Revise'}
-              </Button>
-            </form>
+                  <input
+                    className="flex-1 -p"
+                    value={instruction}
+                    placeholder="Or say what to change — e.g. focus on the animation, not the design"
+                    onChange={(e) => onInstruction(post.id, e.target.value)}
+                    disabled={busy}
+                  />
+                  <Button
+                    variant="primary"
+                    size="s"
+                    type="submit"
+                    disabled={busy || !instruction.trim()}
+                  >
+                    {revising ? 'Revising…' : 'Revise'}
+                  </Button>
+                </form>
+              </>
+            )}
           </div>
         </section>
 
         {/* Facts, questions, history */}
         <aside className="draft-view__side flex flex-col shrink-0">
+          <div className="flex flex-col">
+            <span className="draft-view__label -meta">Project</span>
+            <ProjectPicker
+              value={post.projectId}
+              onChange={(projectId) => update.mutate({ id: post.id, projectId })}
+            />
+          </div>
+
           <PublishPanel post={post} media={media} privateMedia={privateMedia} />
 
           {unconfirmed.length ? (
             <p className="draft-view__warning -p1">
               {unconfirmed.length} detail{unconfirmed.length === 1 ? '' : 's'} to confirm before
-              posting.
+              posting. Tick each one off below once it’s right.
             </p>
           ) : null}
 
@@ -360,17 +435,46 @@ function DraftEditor({
             <div className="flex flex-col">
               <span className="draft-view__label -meta">What this draft claims</span>
               <ul className="draft-view__claims flex flex-col">
-                {claims.map((claim, i) => (
-                  <li key={i} className="flex flex-col" data-basis={claim.basis}>
-                    <span className="-p1">{claim.text}</span>
-                    <span className="-meta">
-                      {BASIS_LABEL[claim.basis]}
-                      {claim.assetId && byId.get(claim.assetId)
-                        ? ` · ${assetTitle(byId.get(claim.assetId)!)}`
-                        : ''}
-                    </span>
-                  </li>
-                ))}
+                {claims.map((claim, i) => {
+                  const source =
+                    claim.assetId && byId.get(claim.assetId)
+                      ? ` · ${assetTitle(byId.get(claim.assetId)!)}`
+                      : ''
+                  const checked = confirmed.includes(i)
+                  return (
+                    <li
+                      key={i}
+                      className="flex flex-col"
+                      data-basis={claim.basis}
+                      data-confirmed={checked}
+                    >
+                      <span className="-p1">{claim.text}</span>
+                      {claim.basis === 'unconfirmed' ? (
+                        <label className="draft-view__confirm flex items-center -meta">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={(e) =>
+                              setConfirmed((all) =>
+                                e.target.checked
+                                  ? [...all, i].sort((a, b) => a - b)
+                                  : all.filter((n) => n !== i)
+                              )
+                            }
+                          />
+                          {checked ? 'Confirmed by you' : BASIS_LABEL.unconfirmed}
+                          {source}
+                        </label>
+                      ) : (
+                        <span className="-meta">
+                          {BASIS_LABEL[claim.basis]}
+                          {source}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ) : null}
@@ -426,23 +530,16 @@ function DraftEditor({
             </ol>
           </div>
 
-          <Button
-            variant="danger"
-            size="s"
-            onClick={() =>
-              update.mutate(
-                { id: post.id, status: 'discarded' },
-                {
-                  onSuccess: () => {
-                    leaving.current = true
-                    navigate({ to: '/drafts' })
-                  },
-                }
-              )
-            }
-          >
-            Discard this draft
-          </Button>
+          {shelved ? null : (
+            <div className="draft-view__shelve flex items-center">
+              <Button variant="ghost" size="s" onClick={() => leave('archived')}>
+                Archive
+              </Button>
+              <Button variant="danger" size="s" onClick={() => leave('discarded')}>
+                Discard this draft
+              </Button>
+            </div>
+          )}
         </aside>
       </div>
     </div>

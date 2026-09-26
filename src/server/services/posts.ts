@@ -5,6 +5,8 @@ import { frameAssetIds, MAX_FRAME_MEDIA } from '@shared/frames.ts'
 import type { DB } from '../db/index.ts'
 import { notify } from '../lib/events.ts'
 import { now } from './assets.ts'
+import { ATTACHED_IMAGE_LIMIT, PUBLISHABLE_FROM } from '@shared/constants.ts'
+import { writingProfile } from './profiles.ts'
 
 interface PostRow {
   id: string
@@ -17,6 +19,7 @@ interface PostRow {
   status: PostStatus
   current_revision_id: string | null
   scheduled_for: string | null
+  planned_for: string | null
   published_at: string | null
   public_url: string | null
   created_at: string
@@ -72,6 +75,54 @@ export class PostRuleError extends Error {
 
 // Statuses that mean "this can go public" — only allowed once every piece of media is approved.
 const PUBLIC_STATUSES: PostStatus[] = ['approved', 'scheduled', 'published']
+
+// ── Status workflow, planning, attached media, claims ───────────────────────────────────────
+
+// Statuses that can be pencilled onto a day; scheduled and published posts have a real date.
+const PLANNABLE: PostStatus[] = ['draft', 'review', 'approved']
+
+// Scheduling and publishing come after approval. An archived post that went out can go back
+// to published (unarchiving).
+function assertTransition(
+  post: { status: PostStatus; published_at: string | null },
+  to: PostStatus
+) {
+  if (to === 'scheduled' && post.status !== 'approved' && post.status !== 'scheduled') {
+    throw new PostRuleError('Approve this post before scheduling it.')
+  }
+  const unarchive = post.status === 'archived' && !!post.published_at
+  if (to === 'published' && !PUBLISHABLE_FROM.includes(post.status) && !unarchive) {
+    throw new PostRuleError('Approve this post before marking it published.')
+  }
+}
+
+interface MediaRow {
+  id: string
+  kind: 'image' | 'video'
+  visibility: 'private' | 'approved'
+  title: string
+}
+
+// X and LinkedIn take one video on its own, or up to a few images.
+function assertAttachable(platform: Platform, media: MediaRow[]) {
+  const label = platform === 'x' ? 'X' : 'LinkedIn'
+  if (media.some((m) => m.kind === 'video') && media.length > 1) {
+    throw new PostRuleError(`${label} takes one video on its own, or images only.`, 400)
+  }
+  const limit = ATTACHED_IMAGE_LIMIT[platform as keyof typeof ATTACHED_IMAGE_LIMIT]
+  if (media.length > limit) {
+    throw new PostRuleError(`${label} takes up to ${limit} images.`, 400)
+  }
+}
+
+// A hand edit checks off 'unconfirmed' claims by position; the rest are left as they were.
+const checkOffClaims = (claims: Claim[], confirmed: number[]): Claim[] =>
+  claims.map((claim, i) => {
+    const { confirmed: _, ...rest } = claim
+    return claim.basis === 'unconfirmed' && confirmed.includes(i)
+      ? { ...rest, confirmed: true }
+      : rest
+  })
 
 // ── Post content rules, shared by manual edits and the AI tasks ─────────────────────────────
 
@@ -246,6 +297,7 @@ export function createPostStore(db: DB) {
         angle: r.angle,
         status: r.status,
         scheduledFor: r.scheduled_for,
+        plannedFor: r.planned_for ?? null,
         publishedAt: r.published_at,
         publicUrl: r.public_url,
         current: current ? toRevision(current, existing) : null,
@@ -258,6 +310,36 @@ export function createPostStore(db: DB) {
 
   const row = (id: string) =>
     db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as PostRow | undefined
+
+  const assertProject = (projectId: string | null | undefined) => {
+    if (projectId && !db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) {
+      throw new PostRuleError('Project not found', 400)
+    }
+  }
+
+  // Library images/videos in the given order (deduplicated); anything else is refused.
+  const mediaRows = (assetIds: string[]): MediaRow[] => {
+    const ids = [...new Set(assetIds)]
+    const found = new Map(
+      (
+        db
+          .prepare(
+            `SELECT id, kind, visibility, coalesce(nullif(title, ''), original_name, 'Untitled') AS title
+             FROM assets WHERE id IN (SELECT value FROM json_each(?)) AND kind IN ('image', 'video')`
+          )
+          .all(JSON.stringify(ids)) as MediaRow[]
+      ).map((r) => [r.id, r])
+    )
+    const missing = ids.filter((id) => !found.has(id))
+    if (missing.length) {
+      throw new PostRuleError(
+        'Only images and videos from the library can be attached.',
+        400,
+        missing
+      )
+    }
+    return ids.map((id) => found.get(id)!)
+  }
 
   return {
     list(statuses: PostStatus[], projectId?: string): Post[] {
@@ -306,7 +388,9 @@ export function createPostStore(db: DB) {
       const revisions = revisionRows.map((rev) => toRevision(rev, existing))
       const sourceAssetIds = r.idea_id
         ? (
-            db.prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ?').all(r.idea_id) as {
+            db
+              .prepare('SELECT asset_id FROM idea_sources WHERE idea_id = ? ORDER BY rowid')
+              .all(r.idea_id) as {
               asset_id: string
             }[]
           ).map((s) => s.asset_id)
@@ -328,11 +412,19 @@ export function createPostStore(db: DB) {
     },
 
     // Manual edit: a new revision authored by Mario, keeping the previous claims/questions.
-    saveRevision(postId: string, segments: Segment[], caption?: string | null) {
+    // `confirmedClaims` (positions in the previous claims) is which 'unconfirmed' claims he has
+    // checked off; left out, the previous check-offs carry over.
+    saveRevision(
+      postId: string,
+      segments: Segment[],
+      caption?: string | null,
+      confirmedClaims?: number[]
+    ) {
       const post = row(postId)!
       const previous = db
         .prepare('SELECT claims, questions FROM post_revisions WHERE id = ?')
         .get(post.current_revision_id) as { claims: string; questions: string } | undefined
+      const claims: Claim[] = previous ? JSON.parse(previous.claims) : []
       const id = db.transaction(() =>
         writeRevision(db, {
           postId,
@@ -340,7 +432,7 @@ export function createPostStore(db: DB) {
           segments: cleanSegments(db, post.platform, segments),
           caption,
           author: 'me',
-          claims: previous ? JSON.parse(previous.claims) : [],
+          claims: confirmedClaims ? checkOffClaims(claims, confirmedClaims) : claims,
           questions: previous ? JSON.parse(previous.questions) : [],
         })
       )()
@@ -373,6 +465,8 @@ export function createPostStore(db: DB) {
         scheduledFor?: string | null
         publishedAt?: string | null
         publicUrl?: string | null
+        plannedFor?: string | null
+        projectId?: string | null
       }
     ) {
       const post = row(id)!
@@ -382,6 +476,16 @@ export function createPostStore(db: DB) {
       const status = unschedule ? 'approved' : (values.status ?? post.status)
       const scheduledFor =
         values.scheduledFor !== undefined ? values.scheduledFor : post.scheduled_for
+
+      if (values.status && values.status !== post.status) assertTransition(post, values.status)
+      if (values.plannedFor && !PLANNABLE.includes(status)) {
+        throw new PostRuleError(
+          status === 'scheduled' || status === 'published'
+            ? 'This post already has a date. Plans are for posts that aren’t scheduled yet.'
+            : 'Restore this post to a draft before planning it.'
+        )
+      }
+      assertProject(values.projectId)
 
       if (
         values.status &&
@@ -409,12 +513,188 @@ export function createPostStore(db: DB) {
       if (values.scheduledFor !== undefined) columns.scheduled_for = values.scheduledFor
       if (values.publishedAt !== undefined) columns.published_at = values.publishedAt
       if (values.publicUrl !== undefined) columns.public_url = values.publicUrl
+      // Leaving "scheduled" for anything but published gives up the slot.
+      if (
+        post.status === 'scheduled' &&
+        values.status &&
+        values.status !== 'scheduled' &&
+        values.status !== 'published' &&
+        values.scheduledFor === undefined
+      ) {
+        columns.scheduled_for = null
+      }
+      if (values.plannedFor !== undefined) columns.planned_for = values.plannedFor
+      // Scheduling or publishing replaces the pencilled-in plan.
+      if ((status === 'scheduled' || status === 'published') && post.planned_for) {
+        columns.planned_for = null
+      }
+      if (values.projectId !== undefined) columns.project_id = values.projectId
       const keys = Object.keys(columns)
       if (!keys.length) return
       db.prepare(
         `UPDATE posts SET ${keys.map((k) => `${k} = @${k}`).join(', ')}, updated_at = @updated_at WHERE id = @id`
       ).run({ ...columns, id, updated_at: now() })
       notify('posts')
+    },
+
+    // ── Made by hand (no AI) ─────────────────────────────────────────────────────────────────
+
+    // A blank draft per platform. With an idea, the drafts join its package (the platform tabs
+    // in the editor) and take its angle, and its project unless one is given.
+    create(input: {
+      platforms: Platform[]
+      projectId?: string | null
+      ideaId?: string | null
+    }): string[] {
+      const idea = input.ideaId
+        ? (db.prepare('SELECT id, project_id, angle FROM ideas WHERE id = ?').get(input.ideaId) as
+            { id: string; project_id: string | null; angle: Post['angle'] } | undefined)
+        : undefined
+      if (input.ideaId && !idea) throw new PostRuleError('Idea not found', 400)
+      const projectId = input.projectId !== undefined ? input.projectId : (idea?.project_id ?? null)
+      assertProject(projectId)
+      const profile = writingProfile(db)
+      const ids = db.transaction(() => {
+        const created = [...new Set(input.platforms)].map((platform) => {
+          const postId = randomUUID()
+          const segments = cleanSegments(db, platform, [{ text: '' }])
+          db.prepare(
+            `INSERT INTO posts (id, idea_id, profile_id, project_id, platform, format, angle, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')`
+          ).run(
+            postId,
+            idea?.id ?? null,
+            profile.id,
+            projectId,
+            platform,
+            formatFor(platform, segments.length),
+            idea?.angle ?? null
+          )
+          writeRevision(db, { postId, platform, segments, author: 'me' })
+          return postId
+        })
+        if (idea) {
+          db.prepare("UPDATE ideas SET status = 'drafted', updated_at = ? WHERE id = ?").run(
+            now(),
+            idea.id
+          )
+        }
+        return created
+      })()
+      notify('posts')
+      if (idea) notify('ideas')
+      return ids
+    },
+
+    // A post that went out without Pullup, recorded so the calendar and history are complete.
+    // Its media is public already, but a private asset only becomes public with `approveMedia`
+    // (Mario's explicit OK) — same rule as approving a draft.
+    logPublished(input: {
+      platform: Platform
+      text: string
+      publicUrl?: string | null
+      publishedAt: string
+      assetIds: string[]
+      projectId?: string | null
+      approveMedia?: boolean
+    }): string {
+      const { platform, text } = input
+      assertProject(input.projectId)
+      const media = mediaRows(input.assetIds)
+      if (!hasFrameMedia(platform)) assertAttachable(platform, media)
+      const blocked = media.filter((m) => m.visibility === 'private')
+      if (blocked.length && !input.approveMedia) {
+        throw new PostRuleError(
+          `Approve the media for public use first: ${blocked.map((m) => m.title).join(', ')}`,
+          409,
+          blocked.map((m) => m.id)
+        )
+      }
+      // Instagram: one frame/slide per media (the story's text on its first frame, the
+      // carousel's as its caption). X and LinkedIn: the text, with the media attached.
+      const segments: Segment[] = hasFrameMedia(platform)
+        ? media.length
+          ? media.map((m, i) => ({
+              text: platform === 'ig_story' && i === 0 ? text : '',
+              assetId: m.id,
+              kind: m.kind,
+              assetIds: [m.id],
+            }))
+          : [{ text: platform === 'ig_story' ? text : '' }]
+        : [{ text }]
+      const postId = randomUUID()
+      const profile = writingProfile(db)
+      db.transaction(() => {
+        db.prepare(
+          `INSERT INTO posts (id, profile_id, project_id, platform, format, status, published_at, public_url)
+           VALUES (?, ?, ?, ?, ?, 'published', ?, ?)`
+        ).run(
+          postId,
+          profile.id,
+          input.projectId ?? null,
+          platform,
+          formatFor(platform, segments.length),
+          input.publishedAt,
+          input.publicUrl ?? null
+        )
+        writeRevision(db, {
+          postId,
+          platform,
+          segments: cleanSegments(db, platform, segments),
+          caption: platform === 'ig_feed' ? text : null,
+          author: 'me',
+        })
+        if (!hasFrameMedia(platform)) {
+          setAttachedMedia(
+            db,
+            postId,
+            media.map((m) => m.id)
+          )
+        }
+      })()
+      if (blocked.length) this.approveMedia(postId)
+      else notify('posts')
+      return postId
+    },
+
+    // X / LinkedIn: replace the post's attached media (in attachment order). A post that's
+    // approved or further along can't take private media.
+    setMedia(postId: string, assetIds: string[]) {
+      const post = row(postId)!
+      if (hasFrameMedia(post.platform)) {
+        throw new PostRuleError('Instagram media is picked per frame.', 400)
+      }
+      const media = mediaRows(assetIds)
+      assertAttachable(post.platform, media)
+      const blocked = media.filter((m) => m.visibility === 'private')
+      if (blocked.length && PUBLIC_STATUSES.includes(post.status)) {
+        throw new PostRuleError(
+          `This post is already ${post.status}: approve ${blocked.map((m) => m.title).join(', ')} for public use first, or move the post back to Draft.`,
+          409,
+          blocked.map((m) => m.id)
+        )
+      }
+      db.transaction(() => {
+        setAttachedMedia(
+          db,
+          postId,
+          media.map((m) => m.id)
+        )
+        db.prepare('UPDATE posts SET updated_at = ? WHERE id = ?').run(now(), postId)
+      })()
+      notify('posts')
+    },
+
+    // The post's own project, when that project has AI turned off (its source assets are
+    // checked separately, by the AI context).
+    aiBlockedBy(postId: string): string | null {
+      const found = db
+        .prepare(
+          `SELECT pr.name FROM posts p JOIN projects pr ON pr.id = p.project_id
+           WHERE p.id = ? AND pr.ai_allowed = 0`
+        )
+        .get(postId) as { name: string } | undefined
+      return found?.name ?? null
     },
   }
 }

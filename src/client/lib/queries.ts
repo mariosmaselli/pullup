@@ -69,6 +69,7 @@ export interface ProjectPatch {
   status?: ProjectStatus
   isClientWork?: boolean
   aiAllowed?: boolean
+  tags?: string[]
 }
 
 export function useCreateProject() {
@@ -150,7 +151,8 @@ export const useIdeas = (status = 'suggested,saved') =>
 export function useGenerateIdeas() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { assetIds: string[]; instruction?: string }) =>
+    // Some assets, or a whole project's material (the server picks up to 12 of its items).
+    mutationFn: (body: { assetIds?: string[]; projectId?: string; instruction?: string }) =>
       api<Idea[]>('/ideas/generate', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
   })
@@ -159,8 +161,31 @@ export function useGenerateIdeas() {
 export function useUpdateIdea() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: IdeaStatus }) =>
-      api<Idea>(`/ideas/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    // answers: Mario's answer to each of the idea's questions, in order.
+    mutationFn: ({ id, ...body }: { id: string; status?: IdeaStatus; answers?: string[] }) =>
+      api<Idea>(`/ideas/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
+  })
+}
+
+// An idea written by hand (no AI).
+import type { Angle } from '@shared/constants.ts'
+
+export interface NewIdeaInput {
+  title: string
+  summary?: string
+  angle?: Angle | null
+  format?: 'single' | 'thread' | 'story_seq' | 'carousel' | null
+  platforms?: Platform[]
+  assetIds?: string[]
+  projectId?: string | null
+}
+
+export function useCreateIdea() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: NewIdeaInput) =>
+      api<Idea>('/ideas', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ideas'] }),
   })
 }
@@ -211,10 +236,21 @@ function usePostMutation<V>(request: (vars: V) => Promise<PostDetail>) {
 
 export const useSavePostRevision = () =>
   usePostMutation(
-    ({ id, segments, caption }: { id: string; segments: Segment[]; caption?: string | null }) =>
+    ({
+      id,
+      segments,
+      caption,
+      confirmedClaims,
+    }: {
+      id: string
+      segments: Segment[]
+      caption?: string | null
+      // Positions of the 'unconfirmed' claims checked off in this edit.
+      confirmedClaims?: number[]
+    }) =>
       api<PostDetail>(`/posts/${id}/revisions`, {
         method: 'POST',
-        body: JSON.stringify({ segments, caption }),
+        body: JSON.stringify({ segments, caption, confirmedClaims }),
       })
   )
 
@@ -242,11 +278,62 @@ export const useUpdatePost = () =>
       scheduledFor?: string | null
       publicUrl?: string | null
       publishedAt?: string | null
+      // A local day (YYYY-MM-DD) the post is pencilled onto, without scheduling it.
+      plannedFor?: string | null
+      projectId?: string | null
     }) => api<PostDetail>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
   )
 
 export const useApproveMedia = () =>
   usePostMutation((id: string) => api<PostDetail>(`/posts/${id}/approve-media`, { method: 'POST' }))
+
+// ── Posts made by hand, attached media ──────────────────────────────────────────────────────
+
+// Blank drafts, one per platform (no AI).
+export function useCreatePosts() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      platforms: Platform[]
+      projectId?: string | null
+      ideaId?: string | null
+    }) => api<{ postIds: string[] }>('/posts', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      queryClient.invalidateQueries({ queryKey: ['ideas'] })
+    },
+  })
+}
+
+export interface LoggedPost {
+  platform: Platform
+  text: string
+  publicUrl: string | null
+  publishedAt: string
+  assetIds: string[]
+  projectId: string | null
+  // "It's posted already": make its private media public.
+  approveMedia?: boolean
+}
+
+// Record a post that went out without Pullup.
+export function useLogPost() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: LoggedPost) =>
+      api<PostDetail>('/posts/log', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: (post) => {
+      queryClient.setQueryData(['posts', 'detail', post.id], post)
+      for (const key of ['posts', 'assets']) queryClient.invalidateQueries({ queryKey: [key] })
+    },
+  })
+}
+
+// X / LinkedIn: the post's attached media, in order.
+export const useSetPostMedia = () =>
+  usePostMutation(({ id, assetIds }: { id: string; assetIds: string[] }) =>
+    api<PostDetail>(`/posts/${id}/media`, { method: 'PUT', body: JSON.stringify({ assetIds }) })
+  )
 
 // ── Renders ───────────────────────────────────────────────────────────────────────────────
 
@@ -316,5 +403,172 @@ export function useCreateRenderExport() {
       ),
     onSettled: (_data, _error, { renderId }) =>
       queryClient.invalidateQueries({ queryKey: ['renders', 'exports', renderId] }),
+  })
+}
+
+// ── Housekeeping: storage, old-render cleanup, trash, fonts, AI spend ─────────────────────────
+// Keyed under 'system' so server change events keep them fresh.
+
+import type {
+  AiUsage,
+  CleanupPreview,
+  CleanupResult,
+  EmptyTrashResult,
+  FontFolder,
+  RestoreResult,
+  StorageInfo,
+  TrashListing,
+} from '@shared/storage.ts'
+
+export const useStorage = () =>
+  useQuery({ queryKey: ['system', 'storage'], queryFn: () => api<StorageInfo>('/storage') })
+
+// What "Clean up old renders" would move — fetched only once asked for.
+export const useCleanupPreview = (enabled: boolean) =>
+  useQuery({
+    queryKey: ['system', 'storage', 'cleanup'],
+    queryFn: () => api<CleanupPreview>('/storage/cleanup'),
+    enabled,
+  })
+
+function useInvalidateHousekeeping() {
+  const queryClient = useQueryClient()
+  return () => {
+    for (const key of ['system', 'renders', 'assets']) {
+      queryClient.invalidateQueries({ queryKey: [key] })
+    }
+  }
+}
+
+export function useCleanUpRenders() {
+  const invalidate = useInvalidateHousekeeping()
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api<CleanupResult>('/storage/cleanup', { method: 'POST', body: JSON.stringify({ ids }) }),
+    onSuccess: invalidate,
+  })
+}
+
+export const useTrash = () =>
+  useQuery({ queryKey: ['system', 'trash'], queryFn: () => api<TrashListing>('/storage/trash') })
+
+export function useRestoreFromTrash() {
+  const invalidate = useInvalidateHousekeeping()
+  return useMutation({
+    mutationFn: (name: string) =>
+      api<RestoreResult>('/storage/trash/restore', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    onSettled: invalidate,
+  })
+}
+
+export function useEmptyTrash() {
+  const invalidate = useInvalidateHousekeeping()
+  return useMutation({
+    mutationFn: (names: string[]) =>
+      api<EmptyTrashResult>('/storage/trash/empty', {
+        method: 'POST',
+        body: JSON.stringify({ names }),
+      }),
+    onSettled: invalidate,
+  })
+}
+
+export const useFontFolder = () =>
+  useQuery({ queryKey: ['system', 'fonts'], queryFn: () => api<FontFolder>('/system/fonts') })
+
+export const useAiUsage = () =>
+  useQuery({ queryKey: ['system', 'ai-usage'], queryFn: () => api<AiUsage>('/system/ai-usage') })
+
+// ── Assets: Library search, tags, usage, selection actions, inbox folder ─────────────────────
+
+import { keepPreviousData } from '@tanstack/react-query'
+import type {
+  AssetFilters,
+  AssetUsage,
+  BulkDeleteResult,
+  InboxIssue,
+  TagCount,
+} from '@shared/types.ts'
+
+// Adds tags to the asset edit above (interface merging).
+export interface AssetPatch {
+  tags?: string[]
+}
+
+const assetQuery = (scope: 'inbox' | 'all', filters: AssetFilters) => {
+  const query = new URLSearchParams({ scope })
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value)
+  return `/assets?${query}`
+}
+
+// Filtered on the server (lists are capped). The previous result stays while typing.
+export const useAssetSearch = (scope: 'inbox' | 'all', filters: AssetFilters) =>
+  useQuery({
+    queryKey: ['assets', scope, 'search', filters],
+    queryFn: () => api<Asset[]>(assetQuery(scope, filters)),
+    placeholderData: keepPreviousData,
+  })
+
+// One asset — for a panel whose asset left the list it was opened from (e.g. moved project).
+export const useAsset = (id: string | null, enabled = true) =>
+  useQuery({
+    queryKey: ['assets', 'one', id],
+    queryFn: () => api<Asset>(`/assets/${id}`),
+    enabled: !!id && enabled,
+    retry: false,
+  })
+
+export const useAssetTags = () =>
+  useQuery({ queryKey: ['assets', 'tags'], queryFn: () => api<TagCount[]>('/assets/tags') })
+
+export const useAssetUsage = (id: string) =>
+  useQuery({
+    queryKey: ['assets', 'usage', id],
+    queryFn: () => api<AssetUsage>(`/assets/${id}/usage`),
+  })
+
+export function useBulkUpdateAssets() {
+  const invalidate = useInvalidateAssets()
+  return useMutation({
+    mutationFn: (body: { ids: string[]; projectId?: string | null; triaged?: boolean }) =>
+      api<{ updated: number }>('/assets/bulk', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useBulkDeleteAssets() {
+  const invalidate = useInvalidateAssets()
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api<BulkDeleteResult>('/assets/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+// A thumbnail failed to load: the server rebuilds cached files that were deleted.
+export const repairAsset = (id: string) =>
+  api<{ queued: boolean }>(`/assets/${id}/repair`, { method: 'POST' })
+
+export const useInboxIssues = () =>
+  useQuery({
+    queryKey: ['assets', 'inbox-issues'],
+    queryFn: () => api<InboxIssue[]>('/assets/inbox-issues'),
+  })
+
+export function useInboxIssueAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, action }: { name: string; action: 'retry' | 'trash' }) =>
+      api<{ ok: true }>(`/assets/inbox-issues/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['assets', 'inbox-issues'] }),
   })
 }

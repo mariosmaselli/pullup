@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { POST_STATUS, SEGMENT_KINDS } from '@shared/constants.ts'
+import { PLATFORMS, POST_STATUS, SEGMENT_KINDS } from '@shared/constants.ts'
 import type { Ai } from '../ai/index.ts'
 import type { PostStore } from '../services/posts.ts'
 import type { RenderStore } from '../services/renders.ts'
@@ -41,6 +41,8 @@ const revisionBody = z.object({
     .refine((v) => [...v].length <= 2200, 'Caption is over 2,200 characters')
     .nullable()
     .optional(),
+  // Positions of the 'unconfirmed' claims Mario has checked off (see PostStore.saveRevision).
+  confirmedClaims: z.array(z.number().int().min(0)).max(200).optional(),
 })
 
 const isoDate = z.iso.datetime({ offset: true })
@@ -50,7 +52,40 @@ const patchBody = z.object({
   scheduledFor: isoDate.nullable().optional(),
   publishedAt: isoDate.nullable().optional(),
   publicUrl: z.url().nullable().optional(),
+  // A local calendar day (YYYY-MM-DD): pencilled in, not scheduled.
+  plannedFor: z.iso.date().nullable().optional(),
+  projectId: z.string().nullable().optional(),
 })
+
+// ── Made by hand (no AI) ──────────────────────────────────────────────────────────────────────
+
+const createBody = z.object({
+  platforms: z.array(z.enum(PLATFORMS)).min(1).max(PLATFORMS.length),
+  projectId: z.string().nullable().optional(),
+  ideaId: z.string().nullable().optional(),
+})
+
+const logBody = z
+  .object({
+    platform: z.enum(PLATFORMS),
+    text: z.string().max(4000),
+    publicUrl: z
+      .url({ protocol: /^https?$/ })
+      .nullable()
+      .optional(),
+    publishedAt: isoDate,
+    assetIds: z.array(z.string()).max(10).default([]),
+    projectId: z.string().nullable().optional(),
+    // "It's posted already": make its private media public.
+    approveMedia: z.boolean().optional(),
+  })
+  .refine((b) => b.text.trim() || b.assetIds.length, 'Add the post’s text or media')
+  .refine(
+    (b) => b.platform !== 'ig_feed' || [...b.text].length <= 2200,
+    'Caption is over 2,200 characters'
+  )
+
+const mediaBody = z.object({ assetIds: z.array(z.string()).max(20) })
 
 export function postRoutes(posts: PostStore, ai: Ai, renders: RenderStore) {
   return (
@@ -60,6 +95,26 @@ export function postRoutes(posts: PostStore, ai: Ai, renders: RenderStore) {
           posts.list(statusQuery.parse(c.req.query('status')), c.req.query('project') || undefined)
         )
       )
+
+      // Blank drafts, one per platform (works with AI off).
+      .post('/', async (c) => {
+        const postIds = posts.create(createBody.parse(await c.req.json()))
+        return c.json({ postIds }, 201)
+      })
+
+      // Record a post that went out without Pullup.
+      .post('/log', async (c) => {
+        const id = posts.logPublished(logBody.parse(await c.req.json()))
+        return c.json(posts.detail(id), 201)
+      })
+
+      // X / LinkedIn attached media: the full list, in order.
+      .put('/:id/media', async (c) => {
+        const id = c.req.param('id')
+        if (!posts.exists(id)) return c.json({ error: 'Post not found' }, 404)
+        posts.setMedia(id, mediaBody.parse(await c.req.json()).assetIds)
+        return c.json(posts.detail(id))
+      })
 
       .post('/:id/approve-media', (c) => {
         const id = c.req.param('id')
@@ -112,8 +167,8 @@ export function postRoutes(posts: PostStore, ai: Ai, renders: RenderStore) {
       .post('/:id/revisions', async (c) => {
         const id = c.req.param('id')
         if (!posts.exists(id)) return c.json({ error: 'Post not found' }, 404)
-        const { segments, caption } = revisionBody.parse(await c.req.json())
-        posts.saveRevision(id, segments, caption)
+        const { segments, caption, confirmedClaims } = revisionBody.parse(await c.req.json())
+        posts.saveRevision(id, segments, caption, confirmedClaims)
         return c.json(posts.detail(id), 201)
       })
 
@@ -131,6 +186,14 @@ export function postRoutes(posts: PostStore, ai: Ai, renders: RenderStore) {
         const { instruction } = z
           .object({ instruction: z.string().trim().min(1).max(2000) })
           .parse(await c.req.json())
+        // A client project with AI off never reaches the provider, even with no source assets.
+        const blockedBy = posts.aiBlockedBy(id)
+        if (blockedBy) {
+          return c.json(
+            { error: `“${blockedBy}” has AI turned off. Allow it on the project page first.` },
+            403
+          )
+        }
         await ai.revisePost({ postId: id, instruction })
         return c.json(posts.detail(id))
       })

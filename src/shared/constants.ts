@@ -38,3 +38,10 @@ export type Platform = (typeof PLATFORMS)[number]
 export type PostFormat = (typeof POST_FORMATS)[number]
 export type SegmentKind = (typeof SEGMENT_KINDS)[number]
 export type PostStatus = (typeof POST_STATUS)[number]
+
+// ── Post workflow ────────────────────────────────────────────────────────────────────────────
+// Media attached to a whole X or LinkedIn post: one video on its own, or up to this many images.
+// The drafter (ai/tasks/draft-package) picks within the same limits.
+export const ATTACHED_IMAGE_LIMIT = { x: 4, linkedin: 9 } as const
+// Only an approved post can be scheduled or marked published (drafts go through approval first).
+export const PUBLISHABLE_FROM: readonly PostStatus[] = ['approved', 'scheduled', 'published']

@@ -49,6 +49,11 @@ describe('publishing rules', () => {
   it('needs a date to schedule; clearing it goes back to approved', async () => {
     const { id } = await makePost()
     await app.request(`/api/posts/${id}/approve-media`, { method: 'POST' })
+    // Drafts are approved before they're scheduled.
+    expect(
+      (await patch(id, { status: 'scheduled', scheduledFor: '2026-10-02T09:30:00.000Z' })).status
+    ).toBe(409)
+    await patch(id, { status: 'approved' })
     expect((await patch(id, { status: 'scheduled' })).status).toBe(400)
 
     const when = '2026-10-02T09:30:00.000Z'
@@ -64,6 +69,7 @@ describe('publishing rules', () => {
   it('stamps the publish date and keeps the public URL', async () => {
     const { id } = await makePost()
     await app.request(`/api/posts/${id}/approve-media`, { method: 'POST' })
+    await patch(id, { status: 'approved' })
     const res = await patch(id, { status: 'published', publicUrl: 'https://x.com/mario/status/1' })
     const post = (await res.json()) as PostDetail
     expect(post.status).toBe('published')

@@ -214,3 +214,33 @@
     background: var(--signal);
   }
 }
+
+// Restore (archived / discarded) and shelve (archive / discard) actions
+.draft-view__restore,
+.draft-view__shelve {
+  gap: 8px;
+}
+
+.draft-view__status[data-status='archived'],
+.draft-view__status[data-status='discarded'] {
+  color: var(--muted);
+}
+
+// A "confirm before posting" claim Mario can tick off.
+.draft-view__confirm {
+  gap: 6px;
+  cursor: pointer;
+
+  input {
+    margin: 0;
+    accent-color: var(--ink);
+  }
+}
+
+.draft-view__claims li[data-confirmed='true'] {
+  border-color: var(--line);
+
+  .-meta {
+    color: var(--muted);
+  }
+}

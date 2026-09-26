@@ -21,16 +21,69 @@
   line-height: 1.55;
 }
 
+// Attached media (X / LinkedIn), under the first post.
 .text-post__media {
-  gap: 6px;
+  gap: 8px;
   margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 
-  img {
-    width: 120px;
+.text-post__thumbs {
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+
+.text-post__thumb {
+  gap: 2px;
+  width: 120px;
+
+  img,
+  .text-post__no-thumb {
+    display: block;
+    width: 100%;
     aspect-ratio: 16 / 10;
     object-fit: cover;
     border-radius: var(--radius-s);
+    background: var(--surface-muted);
   }
+}
+
+.text-post__thumb-meta {
+  color: var(--muted);
+}
+
+.text-post__thumb-actions {
+  gap: 2px;
+
+  button {
+    min-width: 24px;
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    color: var(--ink-soft);
+    background: var(--bg);
+    transition: border-color var(--duration) var(--ease-out);
+
+    &:hover:not(:disabled) {
+      border-color: var(--muted);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+  }
+}
+
+.text-post__media-bar {
+  gap: 12px;
+  color: var(--muted);
+}
+
+.text-post__error {
+  color: var(--signal);
 }
 
 .text-post__footer {

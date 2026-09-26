@@ -68,6 +68,10 @@
   list-style: none;
 }
 
+.publish-panel__hint {
+  color: var(--ink-soft);
+}
+
 .publish-panel__error {
   color: var(--signal);
 }

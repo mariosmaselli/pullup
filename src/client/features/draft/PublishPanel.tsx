@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Asset, PostDetail } from '@shared/types.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import type { ApiError } from '../../lib/api.ts'
@@ -9,7 +9,7 @@ import { isDue, useNow } from '../../lib/due.ts'
 import './PublishPanel.scss'
 
 // "datetime-local" value for a Date, in local time.
-const localInput = (date: Date) => {
+export const localInput = (date: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
@@ -28,6 +28,14 @@ const tomorrowMorning = () => {
   return d
 }
 
+// 10:00 on a planned day (local YYYY-MM-DD).
+const plannedMorning = (day: string) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y!, m! - 1, d!, 10, 0, 0, 0)
+}
+
+const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+
 interface Props {
   post: PostDetail
   media: Asset[]
@@ -40,8 +48,21 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
   const approve = useApproveMedia()
   const config = PLATFORMS[post.platform]
   const [when, setWhen] = useState(() =>
-    localInput(post.scheduledFor ? new Date(post.scheduledFor) : tomorrowMorning())
+    localInput(
+      post.scheduledFor
+        ? new Date(post.scheduledFor)
+        : post.plannedFor
+          ? plannedMorning(post.plannedFor)
+          : tomorrowMorning()
+    )
   )
+  // Status workflow: drafts are approved before they're scheduled or marked published.
+  const early = post.status === 'draft' || post.status === 'review'
+  const shelved = post.status === 'archived' || post.status === 'discarded'
+  const plannable = early || post.status === 'approved'
+  // The pencilled-in day; saved once the field holds a whole date.
+  const [plan, setPlan] = useState(post.plannedFor ?? '')
+  useEffect(() => setPlan(post.plannedFor ?? ''), [post.plannedFor])
   const [url, setUrl] = useState(post.publicUrl ?? '')
   const now = useNow()
   const due = isDue(post, now)
@@ -156,6 +177,15 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
             </Button>
           </div>
         </div>
+      ) : early ? (
+        <p className="publish-panel__hint -p1">
+          Scheduling and “Mark as published” come after approval. Set the status to Approved first —
+          that’s when Pullup checks every image and video is cleared for public use.
+        </p>
+      ) : shelved ? (
+        <p className="publish-panel__hint -p1">
+          This post is {post.status}. Restore it (top of the page) to keep working on it.
+        </p>
       ) : (
         <>
           <div className="publish-panel__row flex flex-col">
@@ -237,6 +267,37 @@ export function PublishPanel({ post, media, privateMedia }: Props) {
           </div>
         </>
       )}
+
+      {plannable ? (
+        <div className="publish-panel__row flex flex-col">
+          <label className="publish-panel__muted -meta" htmlFor={`plan-${post.id}`}>
+            Planned for · pencilled in, not scheduled
+          </label>
+          <div className="publish-panel__actions flex items-center">
+            <input
+              id={`plan-${post.id}`}
+              className="publish-panel__input -p1 flex-1"
+              type="date"
+              value={plan}
+              onChange={(e) => {
+                setPlan(e.target.value)
+                if (isDay(e.target.value) && e.target.value !== post.plannedFor) {
+                  update.mutate({ id: post.id, plannedFor: e.target.value })
+                }
+              }}
+            />
+            {post.plannedFor ? (
+              <Button
+                variant="ghost"
+                size="s"
+                onClick={() => update.mutate({ id: post.id, plannedFor: null })}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {!config.frames && media.length ? (
         <div className="publish-panel__row flex flex-col">

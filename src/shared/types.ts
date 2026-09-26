@@ -165,6 +165,8 @@ export interface Claim {
   text: string
   basis: 'source' | 'framing' | 'unconfirmed'
   assetId: string | null
+  // Mario checked this 'unconfirmed' claim off in a hand edit.
+  confirmed?: boolean
 }
 
 // One X post in a thread, the LinkedIn post, an Instagram story frame or carousel slide.
@@ -209,6 +211,8 @@ export interface Post {
   angle: Angle | null
   status: PostStatus
   scheduledFor: string | null
+  // Pencilled onto this day (local YYYY-MM-DD) without being scheduled.
+  plannedFor: string | null
   publishedAt: string | null
   publicUrl: string | null
   current: PostRevision | null
@@ -232,4 +236,59 @@ export interface AiRunSummary {
 export interface CaptureResult {
   asset: Asset
   duplicate: boolean
+}
+
+// ── Assets: PDF pages, usage, Library filters, inbox folder issues ───────────────────────────
+// (Asset and CaptureResult above are extended here by interface merging.)
+
+export interface Asset {
+  // Set on an image rendered from a captured PDF: the PDF (kept as the original) and the page.
+  pdf?: { url: string; name: string; page: number } | null
+}
+
+export interface CaptureResult {
+  // A PDF becomes one image asset per page: how many (asset = page 1).
+  pages?: number
+  // Something worth telling Mario about the capture (e.g. a PDF over the page limit).
+  message?: string
+}
+
+// Where an asset is used: posts that show it, ideas that cite it.
+export interface AssetUsage {
+  posts: { id: string; platform: Platform; status: PostStatus; excerpt: string }[]
+  ideas: { id: string; title: string; status: IdeaStatus }[]
+}
+
+// Library search and filters (GET /api/assets). project: an id, or 'none' for unassigned.
+export interface AssetFilters {
+  q?: string
+  kind?: AssetKind
+  project?: string
+  visibility?: Visibility
+  tag?: string
+}
+
+export interface TagCount {
+  tag: string
+  count: number
+}
+
+// A file in <library>/inbox that Pullup couldn't import, and why.
+export interface InboxIssue {
+  name: string
+  reason: string
+  sizeBytes: number
+  modifiedAt: string
+}
+
+// Result of deleting several assets: some may be blocked (e.g. used in a post).
+export interface BulkDeleteResult {
+  deleted: string[]
+  blocked: { id: string; title: string; reason: string }[]
+}
+
+export interface LinkMeta {
+  // Why the page couldn't be fetched (blocked, offline, timeout). The link still works: AI
+  // reads its URL plus Mario's title and notes.
+  error?: string | null
 }

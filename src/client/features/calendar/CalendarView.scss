@@ -1,5 +1,9 @@
 .calendar-view__nav {
   gap: 6px;
+
+  .segmented {
+    margin-right: 10px;
+  }
 }
 
 .calendar-view__month {
@@ -33,6 +37,8 @@
   position: sticky;
   top: 0;
   width: 220px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   gap: 8px;
   padding: 12px;
   border: 1px dashed var(--line);
@@ -62,6 +68,7 @@
 }
 
 .calendar-view__day {
+  position: relative;
   min-height: 116px;
   gap: 4px;
   padding: 8px;
@@ -114,6 +121,13 @@
     border-color: var(--ink);
   }
 
+  // Pencilled in, not scheduled.
+  &[data-planned='true'] {
+    border-style: dashed;
+    border-color: var(--muted);
+    background: transparent;
+  }
+
   &[data-status='published'] {
     border-color: transparent;
     background: color-mix(in srgb, #3aa66a 14%, var(--surface));
@@ -152,6 +166,17 @@
 .calendar-view__chip-head {
   gap: 6px;
   color: var(--muted);
+
+  // One line: the platform shortens before the time / plan label does.
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  > span:last-child:not(:first-child) {
+    flex-shrink: 0;
+  }
 }
 
 .calendar-view__chip-text {
@@ -159,4 +184,41 @@
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.calendar-view__label--spaced {
+  margin-top: 14px;
+}
+
+.calendar-view__tray-hint {
+  margin-top: 10px;
+}
+
+// What a drop on this day does (shown while dragging over it).
+.calendar-view__drop {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--bg);
+  background: var(--ink);
+  pointer-events: none;
+
+  &[data-action='plan'] {
+    color: var(--ink);
+    background: var(--surface-muted);
+    outline: 1px dashed var(--muted);
+  }
+}
+
+// Week: one tall column per day, with more of each post's text.
+.calendar-view__grid[data-view='week'] {
+  .calendar-view__day {
+    min-height: min(62vh, 560px);
+  }
+
+  .calendar-view__chip-text {
+    -webkit-line-clamp: 6;
+  }
 }
