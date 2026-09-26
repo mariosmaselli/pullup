@@ -39,7 +39,7 @@ const PREFERRED = {
   text: ['text-story', 'text-reveal'],
   image: ['image-caption'],
   video: ['video-caption'],
-  several: [], // no multi-media template until the new ones land
+  several: ['media-grid'],
 }
 
 export function defaultTemplate(platform: Platform, kinds: MediaKind[]): FrameTemplate | null {
