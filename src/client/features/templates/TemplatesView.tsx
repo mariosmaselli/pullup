@@ -36,7 +36,7 @@ export function TemplatesView() {
               params={{ id: meta.id }}
               className="templates-view__card flex flex-col"
             >
-              <div className="flex items-center justify-between">
+              <div className="templates-view__card-head flex flex-wrap items-center justify-between">
                 <span className="templates-view__kind -meta">{KIND_LABEL[meta.kind]}</span>
                 <span className="templates-view__aspects -meta">{meta.aspects.join(' · ')}</span>
               </div>
