@@ -4,6 +4,9 @@ import { BackupsPanel } from './BackupsPanel.tsx'
 import { AiKeyForm } from './AiKeyForm.tsx'
 import { VoiceForm } from './VoiceForm.tsx'
 import { PlatformStylesForm } from './PlatformStylesForm.tsx'
+import { AiSpendPanel } from './AiSpendPanel.tsx'
+import { StoragePanel } from './StoragePanel.tsx'
+import { FontsPanel } from './FontsPanel.tsx'
 import './SettingsView.scss'
 
 export function SettingsView() {
@@ -18,15 +21,12 @@ export function SettingsView() {
         {system ? <AiKeyForm system={system} /> : null}
         <dl className="settings-view__list">
           <Row label="Model" value="Claude Opus 5" />
-          <Row
-            label="Usage"
-            value={
-              system
-                ? `${system.ai.runs} call${system.ai.runs === 1 ? '' : 's'} · $${system.ai.costUsd.toFixed(2)} spent`
-                : undefined
-            }
-          />
         </dl>
+      </section>
+
+      <section className="settings-view__section">
+        <h2 className="settings-view__heading -meta">AI spend</h2>
+        <AiSpendPanel />
       </section>
 
       <section className="settings-view__section">
@@ -42,6 +42,16 @@ export function SettingsView() {
       <section className="settings-view__section">
         <h2 className="settings-view__heading -meta">Backups</h2>
         <BackupsPanel />
+      </section>
+
+      <section className="settings-view__section">
+        <h2 className="settings-view__heading -meta">Storage</h2>
+        <StoragePanel />
+      </section>
+
+      <section className="settings-view__section">
+        <h2 className="settings-view__heading -meta">Fonts</h2>
+        <FontsPanel />
       </section>
 
       <section className="settings-view__section">

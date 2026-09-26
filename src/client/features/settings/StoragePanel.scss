@@ -1,0 +1,80 @@
+.storage-panel {
+  gap: 20px;
+
+  a {
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 3px;
+
+    &:hover {
+      text-decoration-color: currentColor;
+    }
+  }
+}
+
+.storage-panel__list {
+  border-top: 1px solid var(--line);
+}
+
+.storage-panel__row {
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+
+  &.-total {
+    .storage-panel__label,
+    .storage-panel__size {
+      color: var(--ink);
+      font-weight: 500;
+    }
+  }
+}
+
+.storage-panel__label {
+  color: var(--ink-soft);
+}
+
+.storage-panel__note {
+  color: var(--muted);
+}
+
+.storage-panel__files {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-panel__size {
+  min-width: 72px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.storage-panel__cleanup {
+  gap: 6px;
+}
+
+.storage-panel__cleanup-row {
+  gap: 16px;
+  min-height: 28px;
+}
+
+.storage-panel__cleanup-title {
+  white-space: nowrap;
+}
+
+.storage-panel__actions {
+  gap: 4px;
+}
+
+.storage-panel__message {
+  // Room for the longest message, so the section below doesn't move when it changes.
+  min-height: calc(13px * 1.45 * 3);
+  max-width: 64ch;
+  color: var(--muted);
+
+  strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+}

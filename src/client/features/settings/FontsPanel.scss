@@ -1,0 +1,44 @@
+.fonts-panel {
+  gap: 8px;
+}
+
+.fonts-panel__list {
+  border-top: 1px solid var(--line);
+}
+
+.fonts-panel__row {
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.fonts-panel__file {
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+}
+
+.fonts-panel__used {
+  color: var(--muted);
+}
+
+.fonts-panel__status {
+  color: var(--muted);
+
+  &.-ok {
+    color: var(--ink-soft);
+  }
+
+  &.-missing {
+    color: var(--signal);
+  }
+}
+
+.fonts-panel__note {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.fonts-panel__folder {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}

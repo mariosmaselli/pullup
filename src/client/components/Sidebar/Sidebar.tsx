@@ -66,6 +66,13 @@ export function Sidebar() {
 
       <div className="sidebar__footer flex flex-col">
         <Link
+          to="/trash"
+          className="sidebar__link flex items-center -p"
+          activeProps={{ className: 'is-active' }}
+        >
+          Trash
+        </Link>
+        <Link
           to="/settings"
           className="sidebar__link flex items-center -p"
           activeProps={{ className: 'is-active' }}

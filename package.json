@@ -10,8 +10,9 @@
   },
   "scripts": {
     "dev": "concurrently -n web,api -c blue,magenta \"vite\" \"tsx watch --clear-screen=false src/server/index.ts\"",
-    "build": "tsc --noEmit && vite build",
-    "start": "NODE_ENV=production tsx src/server/index.ts",
+    "build": "tsc --noEmit && vite build && node scripts/dist-stamp.mjs write",
+    "start": "node scripts/dist-stamp.mjs check && NODE_ENV=production tsx src/server/index.ts",
+    "start:fresh": "node scripts/dist-stamp.mjs check --quiet || pnpm build && pnpm start",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",

@@ -11,6 +11,7 @@ import { CalendarView } from './features/calendar/CalendarView.tsx'
 import { SettingsView } from './features/settings/SettingsView.tsx'
 import { TemplatesView } from './features/templates/TemplatesView.tsx'
 import { TemplateStudio } from './features/template/TemplateStudio.tsx'
+import { TrashView } from './features/trash/TrashView.tsx'
 
 const rootRoute = createRootRoute({ component: AppShell })
 
@@ -81,6 +82,11 @@ const settingsRoute = createRoute({
   path: '/settings',
   component: SettingsView,
 })
+const trashRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/trash',
+  component: TrashView,
+})
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -95,6 +101,7 @@ const routeTree = rootRoute.addChildren([
   templateRoute,
   calendarRoute,
   settingsRoute,
+  trashRoute,
 ])
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' })

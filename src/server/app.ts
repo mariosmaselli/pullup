@@ -28,6 +28,9 @@ import { postRoutes } from './routes/posts.ts'
 import { settingsRoutes } from './routes/settings.ts'
 import { renderRoutes } from './routes/renders.ts'
 import { createBackups } from './services/backups.ts'
+// Housekeeping: storage sizes, old-render cleanup, trash.
+import { createStorage } from './services/storage.ts'
+import { storageRoutes } from './routes/storage.ts'
 
 const FONT_MIME: Record<string, string> = {
   otf: 'font/otf',
@@ -81,6 +84,7 @@ export function createApp(db: DB, options: AppOptions = {}) {
   const renders = createRenderStore(db)
   renders.failStale()
   const backups = createBackups(db)
+  const storage = createStorage({ db, assets, capture, posts, renders })
   const keys = createKeyManager({
     verify: options.verifyKey ?? verifyWithAnthropic,
     onChange: (apiKey) => ai.setProvider(providerFor(apiKey, options.providerFactory)),
@@ -110,6 +114,7 @@ export function createApp(db: DB, options: AppOptions = {}) {
     .route('/posts', postRoutes(posts, ai, renders))
     .route('/projects', projectRoutes(projects))
     .route('/events', eventRoutes())
+    .route('/storage', storageRoutes(storage))
     .all('*', (c) => c.json({ error: 'Not found' }, 404))
 
   const app = new Hono().route('/api', api)

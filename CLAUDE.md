@@ -48,6 +48,10 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | Draft editor (shell / X+LinkedIn / Instagram frames) | [src/client/features/draft/](src/client/features/draft) |
 | Post status rules (private media, scheduling, published) | `update()` in [src/server/services/posts.ts](src/server/services/posts.ts) |
 | DB snapshots (daily, Back up now) | [src/server/services/backups.ts](src/server/services/backups.ts) |
+| Storage sizes, old-render cleanup, trash (list / restore / empty) | [src/server/services/storage.ts](src/server/services/storage.ts), [routes/storage.ts](src/server/routes/storage.ts), types in [src/shared/storage.ts](src/shared/storage.ts) |
+| Trash page | [src/client/features/trash/](src/client/features/trash) |
+| Settings panels (AI spend, storage, fonts check, backups…) | [src/client/features/settings/](src/client/features/settings); AI spend + font folder API in [routes/system.ts](src/server/routes/system.ts) |
+| Run without a terminal (LaunchAgent, Node from `.node-version`, stale-`dist/` check) | [scripts/install-launcher.sh](scripts/install-launcher.sh), [launch.sh](scripts/launch.sh), [dist-stamp.mjs](scripts/dist-stamp.mjs) |
 | Due posts (scheduled time passed) | [src/client/lib/due.ts](src/client/lib/due.ts) |
 | Publish panel / calendar | [PublishPanel](src/client/features/draft/PublishPanel.tsx), [src/client/features/calendar/](src/client/features/calendar) |
 | Platform rules (AI) + editor rules (UI) — keep in step | [src/server/ai/prompts/platforms.md](src/server/ai/prompts/platforms.md), [src/client/lib/platforms.ts](src/client/lib/platforms.ts) |
@@ -79,8 +83,10 @@ running on `localhost:4500`. Full plan and milestones → [docs/ARCHITECTURE.md]
 | Command | Does |
 |---|---|
 | `pnpm dev` | Vite on 4500 + API on 4501 (proxied) |
-| `pnpm build` | Typecheck + build SPA to `dist/` |
-| `pnpm start` | Production: one server on 4500 serving app + API |
+| `pnpm build` | Typecheck + build SPA to `dist/` (stamped with what it was built from) |
+| `pnpm start` | Production: one server on 4500 serving app + API — refuses an out-of-date `dist/` |
+| `pnpm start:fresh` | Build if `dist/` is stale, then start |
+| `scripts/install-launcher.sh` | Mario's call: LaunchAgent that runs production mode at login (`--dry-run` to check) |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest — server tests run against a throwaway library in the OS temp dir |
 

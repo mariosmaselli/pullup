@@ -19,6 +19,8 @@ Internal tool for one person, running locally on one Mac. Decisions below were a
 | Identity | One identity for now: Mario. Profiles table kept; editable "Writing voice" in Settings | Decided 2026-09-25. Profiles return later as connected accounts (X, Instagram, maybe LinkedIn) when direct posting is built |
 | API key | Pasted in Settings → verified via the Models API → saved to `pullup/.env` (0600); hot-swapped, never returned to the browser | No restarts, no copying keys around |
 | Local security | Host + Origin guard on `/api`, no CORS, sandbox CSP on library files, raster-only link images | Other sites/tabs can't read or change local data |
+| Running | `pnpm dev` while working on it; otherwise a LaunchAgent runs production mode at login (`scripts/install-launcher.sh`) with the Node from `.node-version` | No terminal needed; better-sqlite3 only loads on Node 22 |
+| Deleting | Nothing is deleted by Pullup: deletes and "Clean up old renders" move files to `trash/`; only Mario's "Empty trash" deletes | Originals are irreplaceable; renders are cheap to keep until he decides |
 
 Not doing: hosted database, auth, cloud storage, deploys, autonomous agents, direct social publishing.
 
@@ -30,11 +32,23 @@ Configured by `PULLUP_LIBRARY` (default `~/Pullup`). Kept outside the code repo.
 ~/Pullup/
   inbox/      drop zone on disk — Shortcuts, screenshots, anything; imported by the watcher
   media/      originals after capture, by month: media/2026/09/<name>-<id>.<ext>
-  cache/      per-asset thumbnails, posters, frames — safe to delete, rebuilt by Reprocess
-  trash/      originals of deleted assets and inbox-folder duplicates; emptied by you, never by Pullup
+    renders/  template outputs (MP4/JPEG + poster, GIF/WebP exports), by month — never in the Library
+  cache/      per-asset thumbnails, posters, frames, video proxies — all rebuildable: missing
+              thumbnails/previews are rebuilt on start (or POST /api/assets/repair), a missing
+              video proxy the next time a template reads the video
+  fonts/      font files templates load (licensed ones, e.g. PP Neue Montreal, never go in the repo)
+  trash/      deleted originals, inbox-folder duplicates, Studio-deleted render files, and
+    renders/<render id>/  renders moved by "Clean up old renders", with their record (render.json)
+              — emptied by you (Trash → Empty trash), never by Pullup
+  backups/    database snapshots: daily, "Back up now", and one before every migration
+  logs/       pullup.log when started by the LaunchAgent
   .tmp/       in-flight uploads, cleared on start
-  pullup.db   all metadata
+  pullup.db   all metadata (+ -wal / -shm while running)
 ```
+
+The library, and above all `pullup.db`, stays on a local disk. SQLite in a synced folder
+(iCloud Drive, Dropbox) loses data: sync uploads the database without its `-wal` file, and a
+second copy or an evicted file corrupts it. See M10 for phone capture.
 
 ## Capture pipeline (M1)
 
@@ -53,8 +67,15 @@ Configured by `PULLUP_LIBRARY` (default `~/Pullup`). Kept outside the code repo.
   client refreshes queries, reconnects with backoff, and refetches on reconnect.
 - **Delete** moves the original to `trash/` and drops the cache; refused if the asset is used in a post.
 
-Moving the folder (e.g. into iCloud Drive for phone capture) = move it and change one env var. All
-stored paths are relative to the library root.
+All stored paths are relative to the library root, so the whole library can move to another local
+disk by moving it and changing `PULLUP_LIBRARY`. It must not move into iCloud Drive (see above).
+
+**Phone capture plan (M10): only the inbox moves to iCloud.** A new `PULLUP_INBOX` setting points
+the watcher at a folder in iCloud Drive (e.g. `~/Library/Mobile Documents/com~apple~CloudDocs/Pullup
+Inbox`); everything else, including `pullup.db`, stays in the local library. The watcher then has
+to handle iCloud placeholders: a `.name.ext.icloud` file means "not downloaded yet" — ask for the
+download (`brctl download`) and import once the real file appears, instead of ignoring it as a
+dotfile (today's behaviour). Imports move files out of the iCloud folder into `media/` as usual.
 
 ## Data model
 
@@ -105,10 +126,51 @@ Idea sources and claim citations are validated against the assets actually sent.
 
 ## Screens
 
-Sidebar: Inbox · Library · Projects · Ideas · Drafts · Calendar · Settings, with a global identity
-switcher (All / Mario / Nonlinear). Global capture: drop anywhere, ⌘V paste, ⌘K quick capture.
-Asset detail opens as a side panel. Draft editor: sources | angle options | editor with platform
-preview, claims and questions, revisions.
+Sidebar: Inbox · Library · Projects · Ideas · Drafts · Templates · Calendar, and Trash · Settings
+at the bottom (counts: Inbox, open ideas, open drafts, posts due). There is one identity (Mario),
+so there's no identity switcher. Global capture: drop anywhere, ⌘V paste, ⌘K quick capture.
+
+- **Inbox / Library / Project** — asset grids; asset detail opens as a side panel (metadata,
+  visibility, project, AI analysis, post ideas).
+- **Ideas** — suggested and saved ideas with their sources; Write turns one into drafts.
+- **Draft editor** — sources | one tab per platform drafted from the idea (X, LinkedIn, IG story,
+  IG carousel) with its editor (text posts, or frames/slides with a template each and their
+  renders), claims and questions, revise with an instruction, revisions | publish panel (status,
+  media approval, schedule, mark published + URL). No "angle options" column: each draft carries
+  the angle it was written in.
+- **Templates** — the template list and a Studio per template (inputs, live preview, render,
+  GIF / WebP export).
+- **Calendar** — month view of scheduled and published posts; due posts are flagged.
+- **Trash** — what's in `trash/`, with Restore where possible and Empty trash (see Housekeeping).
+- **Settings** — AI key and model, AI spend, writing voice, platform styles, backups, storage,
+  fonts, library paths.
+
+## Housekeeping
+
+- **Storage** (`services/storage.ts`, `GET /api/storage`) — sizes of originals, renders, GIF/WebP
+  exports, cache, trash, backups and the database, plus free disk space.
+- **Clean up old renders** — `GET /api/storage/cleanup` previews; `POST` with the previewed ids
+  moves them. Eligible: older than 7 days, not the render any frame of any post currently uses
+  (`renderForFrame`, the same rule as the editor and "Download all"), not linked to a published
+  post. Each goes to `trash/renders/<id>/` with its MP4/JPEG, poster, GIF/WebP exports and its DB
+  row as `render.json`; the row is then deleted.
+- **Trash** (`GET /api/storage/trash`, `POST …/restore`, `POST …/empty`) —
+  - a deleted original comes back through `capture.importFile` as a new asset in the Inbox (its
+    title, notes, project and analysis were deleted with the old row); refused if the same file
+    is already in the library;
+  - a cleaned-up render comes back with its record (unlinked if its post is gone), refused if
+    something now occupies its path;
+  - a Studio-deleted render file (`render-<id8>-…`) can't come back unless its record still
+    exists: its record was deleted;
+  - Empty trash deletes exactly the items the page listed, after a confirm.
+- **Fonts** — Settings compares every `meta.fonts` file of the installed templates with
+  `GET /api/system/fonts` (the files in `<library>/fonts`).
+- **AI spend** — `GET /api/system/ai-usage`: calls (and failures), tokens and cost from `ai_runs`
+  per month (local time) and per task.
+- **Running without a terminal** — `scripts/install-launcher.sh` installs the `local.pullup`
+  LaunchAgent: `scripts/launch.sh` picks Node from `.node-version`, sets a PATH with Homebrew,
+  rebuilds `dist/` when `scripts/dist-stamp.mjs` says it's stale, waits for the port, and runs the
+  server (logs in `<library>/logs`). `pnpm start` refuses a stale `dist/`.
 
 ## Milestones
 
@@ -124,7 +186,8 @@ preview, claims and questions, revisions.
 | M7 | Template engine: WebGL/Three.js/GSAP/canvas templates in a worker, frame-stepped MP4 (WebCodecs + Mediabunny) and JPEG export, video proxies, render checks; Templates studio | ✅ 6 s 1080×1920 WebGL video in ~1 s; Text story matches Mario's reference; 9 templates (stills, text, slideshow, shader transitions, 3D planes, device frames) |
 | M8 | Story/carousel builder: templates per frame/slide in the draft editor, render into the post | ✅ Pick a template per frame, render one/all, download the frames as a zip |
 | M9 | Publishing by hand: calendar, download per platform, mark published + URL | ✅ Approve media → schedule (panel or drag on the calendar) → mark published with the link; posts listed per project |
-| M10 | Capture from anywhere: iCloud inbox folder + Apple Shortcut | Share from iPhone lands in the Inbox |
+| M10 | Capture from anywhere: `PULLUP_INBOX` in iCloud Drive (only the inbox — the library and DB stay local) + iCloud placeholder downloads + Apple Shortcut | Share from iPhone lands in the Inbox |
+| H1 | Housekeeping: storage view, old-render cleanup, trash page, fonts check, AI spend per month/task, LaunchAgent | ✅ Nothing is deleted without Empty trash; `scripts/install-launcher.sh` (not installed yet) runs it at login |
 | M11 | Discovery + digests: what can I post, unused material, stale projects, weekly digest | Suggestions cite sources, avoid repeats |
 | Later | Connected accounts + direct posting: LinkedIn → X → Instagram (see docs/research/publishing-apis.md) | |
 
