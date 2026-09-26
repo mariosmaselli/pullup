@@ -45,8 +45,12 @@ export const fragment = /* glsl */ `
   uniform vec4 uToRect;
   uniform float uFromAspect; // media width / height
   uniform float uToAspect;
-  uniform float uFromZoom;
+  uniform float uFromZoom;   // includes Scale when the media is bigger than the part that shows
   uniform float uToZoom;
+  // The media's centre relative to the window's centre, in window sizes (uv, y up): Position, when
+  // the media is bigger than the window (scaled up, or cropped by the frame / the caption's room).
+  uniform vec2 uFromShift;
+  uniform vec2 uToShift;
   uniform float uToLod;      // whole mip level where the incoming media is ~64–128 px wide (Displace map)
   // 1 when the media is a video: three.js uploads video frames as plain RGBA8 (its built-in
   // materials decode them in their shader), so video samples are still sRGB-encoded here.
@@ -80,9 +84,10 @@ export const fragment = /* glsl */ `
   uniform float uLineTop[MAX_LINES];    // screen px (top-left origin) of each row's top
   uniform float uLineOffset[MAX_LINES]; // px the line sits below its resting place (mask reveal)
   uniform vec3 uCaptionColor; // sRGB: white over full-bleed media, contrasting ink on the ground
-  uniform float uDim;        // bottom darkening for the caption (0..1, animated)
-  uniform float uDimTop;     // uv.y where the darkening has faded out (well above the caption)
-  uniform float uDimFull;    // uv.y below which it is at full strength (the caption's top)
+  uniform float uDim;        // darkening behind the caption (0..1, animated)
+  uniform float uDimTop;     // uv.y where the darkening has faded out (well clear of the caption)…
+  uniform float uDimFull;    // …and where it reaches full strength (just past the caption's edge)
+  uniform vec2 uDimFar;      // Middle: the same pair on the caption's other side; (-2, -1) = none
 
   varying vec2 vUv;
 
@@ -180,9 +185,9 @@ export const fragment = /* glsl */ `
     return source > target ? vec2(target / source, 1.0) : vec2(1.0, source / target);
   }
 
-  // Screen uv → texture uv for a media covering the window, zoomed.
-  vec2 mediaUv(vec2 uv, vec2 cover, float zoom) {
-    return (uv - gWin.xy) / gWin.zw * cover / zoom + 0.5;
+  // Screen uv → texture uv for a media covering the window, zoomed and shifted.
+  vec2 mediaUv(vec2 uv, vec2 cover, float zoom, vec2 shift) {
+    return ((uv - gWin.xy) / gWin.zw - shift) * cover / zoom + 0.5;
   }
 
   // Signed distance (px) outside a rect (centre, size) in screen uv; negative inside.
@@ -195,12 +200,12 @@ export const fragment = /* glsl */ `
   // noise edges) don't pick a blurry mip level along the seam. Mirrored wrap covers overshoot.
   vec3 sampleFrom(vec2 uv, float zoomMul) {
     float z = uFromZoom * zoomMul / gSoften;
-    vec3 c = textureGrad(uFrom, mediaUv(uv, gCoverA, uFromZoom * zoomMul), gxA / z, gyA / z).rgb;
+    vec3 c = textureGrad(uFrom, mediaUv(uv, gCoverA, uFromZoom * zoomMul, uFromShift), gxA / z, gyA / z).rgb;
     return uFromVideo > 0.5 ? toLinear(c) : c;
   }
   vec3 sampleTo(vec2 uv, float zoomMul) {
     float z = uToZoom * zoomMul / gSoften;
-    vec3 c = textureGrad(uTo, mediaUv(uv, gCoverB, uToZoom * zoomMul), gxB / z, gyB / z).rgb;
+    vec3 c = textureGrad(uTo, mediaUv(uv, gCoverB, uToZoom * zoomMul, uToShift), gxB / z, gyB / z).rgb;
     return uToVideo > 0.5 ? toLinear(c) : c;
   }
 
@@ -248,7 +253,7 @@ export const fragment = /* glsl */ `
 
   // Blurred luminance of the incoming media (a low mip, B-spline filtered), perceptual 0..1.
   float toMap(vec2 uv) {
-    vec3 c = bicubicLod(uTo, mediaUv(uv, gCoverB, uToZoom), uToLod);
+    vec3 c = bicubicLod(uTo, mediaUv(uv, gCoverB, uToZoom, uToShift), uToLod);
     float l = luma(uToVideo > 0.5 ? toLinear(c) : c);
     return pow(clamp(l, 0.0, 1.0), 1.0 / 2.2);
   }
@@ -466,7 +471,9 @@ export const fragment = /* glsl */ `
 
     // Caption and grain in sRGB, like type drawn on a canvas.
     vec3 c = toSRGB(color);
-    c *= 1.0 - uDim * smoothstep(uDimTop, uDimFull, uv.y);
+    float dim = uDim;
+    if (uDimFar.x > -1.5) dim *= smoothstep(uDimFar.x, uDimFar.y, uv.y); // Middle: the far side
+    c *= 1.0 - dim * smoothstep(uDimTop, uDimFull, uv.y);
 
     if (uLines > 0) {
       vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y); // top-left origin, pixel centres

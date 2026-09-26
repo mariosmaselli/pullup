@@ -1,0 +1,106 @@
+.animation-export {
+  gap: 8px;
+}
+
+.animation-export__toggle {
+  align-self: flex-start;
+  gap: 6px;
+  color: var(--muted);
+
+  &:hover,
+  &[aria-expanded='true'] {
+    color: var(--ink);
+  }
+
+  &[aria-expanded='true'] .animation-export__caret {
+    transform: rotate(90deg);
+  }
+}
+
+.animation-export__caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentcolor;
+  transition: transform var(--duration) var(--ease-out);
+}
+
+.animation-export__panel {
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.animation-export__muted {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+// Button, progress and download link swap in one fixed-height row — no jump between them.
+.animation-export__action {
+  min-height: 30px;
+}
+
+.animation-export__download {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.animation-export__progress {
+  gap: 8px;
+}
+
+.animation-export__track {
+  overflow: hidden;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-muted);
+}
+
+.animation-export__bar {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left center;
+  transition: transform 400ms linear;
+}
+
+.animation-export__percent {
+  min-width: 4ch;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.animation-export__warnings {
+  padding: 8px 12px 8px 26px;
+  border-radius: var(--radius-m);
+  color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 8%, transparent);
+}
+
+.animation-export__error {
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 8%, transparent);
+}
+
+.animation-export__made {
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.animation-export__file {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+
+  &:hover {
+    color: var(--ink);
+  }
+}

@@ -263,3 +263,58 @@ export function useDeleteRender() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['renders'] }),
   })
 }
+
+// ── Render exports (GIF / animated WebP) ──────────────────────────────────────────────────────
+
+import type {
+  ExportFormat,
+  ExportPreset,
+  RenderExport,
+  RenderWithExports,
+} from '@shared/render-exports.ts'
+
+// A render's exports. Progress lives on the server: poll while one is being made (`poll` covers
+// the moment between asking and the server listing it).
+export const useRenderExports = (renderId: string | null, poll = false) =>
+  useQuery({
+    queryKey: ['renders', 'exports', renderId],
+    queryFn: () => api<RenderWithExports>(`/renders/${renderId}`),
+    enabled: !!renderId,
+    select: (render) => render.exports,
+    refetchInterval: (query) =>
+      poll || query.state.data?.exports.some((e) => e.status === 'pending') ? 500 : false,
+  })
+
+export function useCreateRenderExport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      renderId,
+      format,
+      preset,
+    }: {
+      renderId: string
+      format: ExportFormat
+      preset: ExportPreset
+    }) =>
+      api<RenderExport>(`/renders/${renderId}/exports`, {
+        method: 'POST',
+        body: JSON.stringify({ format, preset }),
+      }),
+    // Show the finished file straight away (no flash of the Export button before the refetch).
+    onSuccess: (made, { renderId }) =>
+      queryClient.setQueryData<RenderWithExports>(
+        ['renders', 'exports', renderId],
+        (render) =>
+          render && {
+            ...render,
+            exports: [
+              ...render.exports.filter((e) => e.format !== made.format || e.preset !== made.preset),
+              made,
+            ],
+          }
+      ),
+    onSettled: (_data, _error, { renderId }) =>
+      queryClient.invalidateQueries({ queryKey: ['renders', 'exports', renderId] }),
+  })
+}

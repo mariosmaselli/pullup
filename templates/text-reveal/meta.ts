@@ -1,11 +1,12 @@
 import type { TemplateMeta } from '@shared/template.ts'
+import { TEXT_POSITION_PARAMS } from '../_lib/layout.ts'
 
 export const meta: TemplateMeta = {
   id: 'text-reveal',
   name: 'Text reveal',
   description:
-    'Kinetic type set bottom-left: words or lines rise out of a mask, hold, then leave. Wrap words in *asterisks* for the accent colour.',
-  version: 1,
+    'Kinetic type: words or lines rise out of a mask, hold, then leave. Wrap words in *asterisks* for the accent colour.',
+  version: 2,
   kind: 'video',
   aspects: ['9:16', '4:5', '1:1'],
   fps: 30,
@@ -26,6 +27,7 @@ export const meta: TemplateMeta = {
     exit: { type: 'select', label: 'Exit', options: ['Rise', 'Fade', 'None'], default: 'Rise' },
     size: { type: 'number', label: 'Type size', min: 48, max: 160, step: 2, default: 84 },
     weight: { type: 'select', label: 'Weight', options: ['Regular', 'Medium'], default: 'Regular' },
+    ...TEXT_POSITION_PARAMS,
     background: { type: 'color', label: 'Background', default: '#101010' },
     color: { type: 'color', label: 'Text', default: '#ffffff' },
     accent: { type: 'color', label: 'Accent', default: '#ff5b2e' },

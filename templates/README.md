@@ -6,7 +6,7 @@ frame-by-frame, so a 6 s 1080×1920 WebGL video renders in about a second.
 
 ```
 templates/
-  _lib/            shared helpers (text drawing, Three.js setup) — not a template
+  _lib/            shared helpers (layout options, caption card, text drawing, Three.js) — not a template
   my-template/
     meta.ts        export const meta: TemplateMeta   ← name, formats, inputs, fonts
     index.ts       export default (ctx) => ({ setup, update, render, dispose })
@@ -14,10 +14,63 @@ templates/
 
 New folders show up in **Templates** automatically (Vite picks them up; no registration).
 The full contract with comments is in [`src/shared/template.ts`](../src/shared/template.ts).
-Look at [`text-story`](text-story) (canvas 2D still) and [`image-caption`](image-caption) (canvas
-2D media + type) first; [`shader-transition`](shader-transition) (Three.js, GSAP, video textures,
-several clips) and [`device-frame`](device-frame) (3D scene) show WebGL. Removed for now and kept in
+Look at [`text-story`](text-story) (canvas 2D still), [`image-caption`](image-caption) (canvas
+2D media + type) and [`video-caption`](video-caption) (the same card over a clip) first;
+[`shader-transition`](shader-transition) (Three.js, GSAP, video textures, several clips) and
+[`device-frame`](device-frame) (3D scene) show WebGL. Removed for now and kept in
 git history (commit 4bfcd7c): `slow-zoom`, `case-study-cover`, `planes-3d` (to be reworked).
+
+## Shared options: media size and text position
+
+Every template that shows media full frame or sets type offers the same controls, from
+[`_lib/layout.ts`](_lib/layout.ts) — spread them into `meta.params` so the keys, labels and
+defaults match everywhere (don't invent a template-specific "crop" or "framing" param for this):
+
+```ts
+params: { ...MEDIA_SIZE_PARAMS, ...TEXT_POSITION_PARAMS, color: { … } }
+```
+
+| Group                  | Key            | Control                                    | Default   |
+| ---------------------- | -------------- | ------------------------------------------ | --------- |
+| `MEDIA_SIZE_PARAMS`    | `size`         | Media size: `Fill` (cover) / `Fit` (whole) | `Fill`    |
+|                        | `scale`        | Scale 0.5–2, multiplies either             | 1         |
+|                        | `focusX`       | Position left–right 0–1                    | 0.5       |
+|                        | `focusY`       | Position top–bottom 0–1                    | 0.5       |
+|                        | `background`   | Ground colour around Fit / scaled media    | `#101010` |
+| `TEXT_POSITION_PARAMS` | `textPosition` | `Top` / `Middle` / `Bottom`                | `Bottom`  |
+|                        | `textAlign`    | `Left` / `Center`                          | `Left`    |
+
+Position works both ways: when the media overflows the frame it picks which part shows (0 = its
+left/top edge visible); when there's room to spare it places the media (0 = against the left/top
+edge). The defaults reproduce the classic look — media covering the frame, centred; type
+bottom-left on the story margins.
+
+Exceptions, on purpose: templates that show **several** media (`crossfade-slideshow`,
+`shader-transition`) keep their own "Media size" select (`framing` / `fit`: Auto / Fill / Fit or
+Frame) — one choice has to work for slides of different shapes, and Auto picks from them. They
+still take `scale`, `focusX` and `focusY` from `MEDIA_SIZE_PARAMS` (pick them out of the group),
+applied to each slide within its framing: full bleed at cover × scale, framed media at their
+contained size × scale inside the room the type leaves (cropped to it when bigger).
+`device-frame` puts the media on a device screen (its own "Fit media"), not full frame; the device
+itself has `deviceSize` / `deviceX` / `deviceY` (own keys — the draft editor's stand-in reads
+`focusX`/`focusY` as the media's position). All of them still take `TEXT_POSITION_PARAMS`. Every
+new option reduces to the previous look at its default.
+
+Helpers (all in canvas px):
+
+- `mediaSize(ctx.params)` / `textPlacement(ctx.params)` — read the values, tolerating missing or
+  stale ones (anything but `'Fit'` is Fill).
+- `mediaRect(frameW, frameH, mediaW, mediaH, { size, scale, focusX, focusY })` → `{ x, y, w, h }`,
+  the destination rect relative to the frame. It may extend past the frame: clip, and fill the
+  ground first. Canvas 2D: `drawImage(source, x, y, w, h)`; WebGL: derive the UV scale/offset.
+- `textBlockY(frameH, blockH, position, { top, bottom })` → top y of a text block (Middle centres
+  on the frame, kept inside the margins).
+- `textLineX(frameW, lineW, align, side)` → x of one line (`ctx.layoutText` lines carry `width`).
+
+[`_lib/caption.ts`](_lib/caption.ts) is the whole "media + caption" card built on these (caption,
+corner label/index, gradient that follows the caption and only darkens the media, optional per-line
+fade/rise) — `image-caption` and `video-caption` are thin wrappers around it. Share code between
+templates through `_lib/`, never by importing another template's folder.
 
 ## The lifecycle
 
@@ -27,6 +80,11 @@ git history (commit 4bfcd7c): `slow-zoom`, `case-study-cover`, `planes-3d` (to b
 | `update(t, frame)` | every frame | Set uniforms/positions from `t` and from values your timelines tween. Request video frames: `ctx.video(i).seek(localTime)`.                                                                                                       |
 | `render()`         | every frame | Draw. Synchronous — no `await`. For video textures call `sync()` first (see `_lib/three.ts`).                                                                                                                                     |
 | `dispose()`        | once        | Free GPU resources.                                                                                                                                                                                                               |
+
+"Once" per instance: the live preview sets up a **new instance on every settings change** (each
+step of a slider drag), on a fresh canvas, while the previous one keeps drawing until the new one
+has drawn. Keep `setup()` quick and free everything in `dispose()`; `ctx.image(i)` hands each
+instance its own bitmap, so closing it is safe.
 
 ## Rules (they make renders exact and scrubbing correct)
 
@@ -73,3 +131,5 @@ git history (commit 4bfcd7c): `slow-zoom`, `case-study-cover`, `planes-3d` (to b
 - Stills: JPEG, quality 0.92.
 - Every render is checked against Instagram's upload rules; warnings show under the result.
 - Renders are saved in `~/Pullup/media/renders/` with the inputs that made them (reproducible).
+- A video render can also be exported as a looping GIF or animated WebP (Small 480 / Medium 720 /
+  Large 1080 px wide), made from the MP4 on demand and kept next to it.

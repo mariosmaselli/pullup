@@ -3,11 +3,12 @@ import type {
   FontSpec,
   MediaInput,
   TemplateContext,
+  TemplateFactory,
   TemplateInputs,
   TemplateInstance,
   TemplateMeta,
 } from '@shared/template.ts'
-import { loadImage, VideoLayerImpl } from './media.ts'
+import { loadImage, type MediaCache, VideoLayerImpl } from './media.ts'
 import { layoutText } from './text.ts'
 import { loadTemplate } from './templates.ts'
 
@@ -33,6 +34,8 @@ function loadFont(spec: FontSpec): Promise<void> {
       await face.load()
     })()
     loadedFonts.set(key, loading)
+    // A preview worker lives long: let a later load retry (the font may be added meanwhile).
+    loading.catch(() => loadedFonts.get(key) === loading && loadedFonts.delete(key))
   }
   return loading
 }
@@ -61,15 +64,28 @@ function hash(seed: number, frame: number, k = 0) {
 
 export interface Session {
   meta: TemplateMeta
+  canvas: OffscreenCanvas
+  // The media URLs it reads.
+  media: string[]
   fps: number
   duration: number
   frames: number
   // Prepare frame `index` at time t and draw it. `mode` decides how video frames resolve.
   frame(t: number, index: number, video: 'preview' | 'exact' | 'scheduled'): Promise<void>
+  // Preview: frame(t, index, 'preview') without the promise — the canvas is drawn on return.
+  draw(t: number, index: number): void
+  // Preview, before the session is first shown: videos that have no frame yet decode the one
+  // at t (so the first draw isn't empty); the others keep what they show.
+  prime(t: number, index: number): Promise<void>
+  // Preview: take over the video frames the session being replaced shows (same media).
+  adopt(previous: Session): void
   // Export only: runs update() over every frame once to learn which video frames are needed.
   planVideo(): void
   dispose(): void
 }
+
+// Each session's video layers, for adopt() of the session that replaces it.
+const layersOf = new WeakMap<Session, (VideoLayerImpl | null)[]>()
 
 const defaults = (meta: TemplateMeta, inputs: TemplateInputs) => ({
   text: Object.fromEntries(
@@ -93,8 +109,10 @@ export async function createSession(options: {
   mode: 'preview' | 'render'
   width: number
   height: number
+  // Preview only: media shared with earlier sessions of the same worker.
+  cache?: MediaCache
 }): Promise<Session> {
-  const { canvas, meta, inputs, mode, width, height } = options
+  const { canvas, meta, inputs, mode, width, height, cache } = options
   canvas.width = width
   canvas.height = height
 
@@ -105,10 +123,19 @@ export async function createSession(options: {
   const timelines: gsap.core.Timeline[] = []
   const images = new Map<number, Promise<ImageBitmap>>()
   const layers = inputs.media.map((m: MediaInput) =>
-    m.kind === 'video' ? new VideoLayerImpl(m) : null
+    m.kind === 'video' ? new VideoLayerImpl(m, cache) : null
   )
-  await Promise.all(layers.map((l) => l?.init()))
-  await Promise.all((meta.fonts ?? []).map(loadFont))
+  let factory: TemplateFactory
+  try {
+    ;[factory] = await Promise.all([
+      loadTemplate(meta.id),
+      ...layers.map((l) => l?.init()),
+      ...(meta.fonts ?? []).map(loadFont),
+    ])
+  } catch (err) {
+    layers.forEach((l) => l?.dispose())
+    throw err
+  }
 
   const random = prng(inputs.seed)
   const { text, params } = defaults(meta, inputs)
@@ -134,7 +161,7 @@ export async function createSession(options: {
       if (!media || media.kind !== 'image') return Promise.reject(new Error(`No image at ${i}`))
       let loading = images.get(i)
       if (!loading) {
-        loading = loadImage(media.url, abort.signal)
+        loading = cache ? cache.image(media.url) : loadImage(media.url, abort.signal)
         images.set(i, loading)
       }
       return loading
@@ -159,9 +186,25 @@ export async function createSession(options: {
     signal: abort.signal,
   }
 
-  const factory = await loadTemplate(meta.id)
+  const dispose = () => {
+    abort.abort()
+    for (const tl of timelines) tl.kill()
+    layers.forEach((l) => l?.dispose())
+    images.forEach((p) => p.then((b) => b.close()).catch(() => {}))
+  }
+
   const instance: TemplateInstance = factory(ctx)
-  await instance.setup()
+  try {
+    await instance.setup()
+  } catch (err) {
+    try {
+      instance.dispose()
+    } catch {
+      // A half set-up template may not dispose cleanly; the setup error is the one to report.
+    }
+    dispose()
+    throw err
+  }
 
   const videoLayers = layers.filter((l): l is VideoLayerImpl => !!l)
   const step = (t: number, index: number) => {
@@ -169,8 +212,10 @@ export async function createSession(options: {
     instance.update(t, index)
   }
 
-  return {
+  const session: Session = {
     meta,
+    canvas,
+    media: inputs.media.map((m) => m.url),
     fps,
     duration,
     frames,
@@ -184,6 +229,25 @@ export async function createSession(options: {
       instance.render()
     },
 
+    draw(t, index) {
+      step(t, index)
+      videoLayers.forEach((l) => l.resolvePreview())
+      instance.render()
+    },
+
+    async prime(t, index) {
+      step(t, index)
+      await Promise.all(videoLayers.map((l) => l.resolveFirst()))
+    },
+
+    adopt(previous) {
+      const before = layersOf.get(previous) ?? []
+      layers.forEach((l, i) => {
+        const old = before[i]
+        if (l && old) l.adopt(old)
+      })
+    },
+
     planVideo() {
       if (!videoLayers.length) return
       const plans = videoLayers.map(() => [] as (number | null)[])
@@ -195,11 +259,10 @@ export async function createSession(options: {
     },
 
     dispose() {
-      abort.abort()
       instance.dispose()
-      for (const tl of timelines) tl.kill()
-      layers.forEach((l) => l?.dispose())
-      images.forEach((p) => p.then((b) => b.close()).catch(() => {}))
+      dispose()
     },
   }
+  layersOf.set(session, layers)
+  return session
 }

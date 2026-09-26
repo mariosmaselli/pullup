@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { TemplateFactory, TextLayout } from '@shared/template.ts'
+import { textLineX, textPlacement } from '../_lib/layout.ts'
 import { STORY_TYPE } from '../_lib/text.ts'
 import { createRenderer, imageTexture, videoTexture } from '../_lib/three.ts'
 import {
@@ -139,6 +140,13 @@ const srgb = (hex: string) => {
 }
 const luminance = (v: THREE.Vector3) => 0.2126 * v.x + 0.7152 * v.y + 0.0722 * v.z
 
+const num = (v: unknown, fallback: number, lo: number, hi: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback
+
+// Position 0 → lo, 0.5 → mid (exactly: the default placement), 1 → hi.
+const between = (lo: number, mid: number, hi: number, f: number) =>
+  f < 0.5 ? lo + (mid - lo) * f * 2 : mid + (hi - mid) * (f - 0.5) * 2
+
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
   return t * t * (3 - 2 * t)
@@ -148,6 +156,10 @@ const smooth = (a: number, b: number, x: number) => {
 // expo.out. Monotonic, 0 → 1.
 const settleEase = (p: number) =>
   ((1 - Math.pow(2, -7.5 * p)) / (1 - Math.pow(2, -7.5))) * smooth(0, 0.3, p)
+
+// Where the entrance starts, relative to the resting pose (design px; the device also starts
+// tilted further, see device.start): lower and further back.
+const ENTRY = { y: -90, z: -260 }
 
 // ── Template ──────────────────────────────────────────────────────────────────────────────────
 
@@ -167,6 +179,13 @@ const deviceFrame: TemplateFactory = (ctx) => {
   const DW = 1080
   const DH = ctx.height / s // design height (1920, 1350 or 1080)
   const story = ctx.aspect === '9:16'
+  const { position, align } = textPlacement(ctx.params)
+  // Device size and position: relative to the device fitted into the space the caption leaves.
+  // (Not `size`: setup() has its own `size`, the caption's type size.)
+  const deviceScale = num(ctx.params.deviceSize, 1, 0.5, 1.5)
+  const fx = num(ctx.params.deviceX, 0.5, 0, 1)
+  const fy = num(ctx.params.deviceY, 0.5, 0, 1)
+  const custom = deviceScale !== 1 || fx !== 0.5 || fy !== 0.5
 
   let renderer: THREE.WebGLRenderer
   let env: THREE.WebGLRenderTarget
@@ -183,6 +202,7 @@ const deviceFrame: TemplateFactory = (ctx) => {
   let captionG: OffscreenCanvasRenderingContext2D | null = null
   let captionTexture: THREE.CanvasTexture<OffscreenCanvas> | null = null
   let captionLayout: TextLayout | null = null
+  let captionX: number[] = [] // canvas px, x of each caption line
   let captionTop = 0 // canvas px, top of the caption canvas
   let captionPad = 0
   let captionKey = ''
@@ -236,6 +256,20 @@ const deviceFrame: TemplateFactory = (ctx) => {
     root.scale.setScalar(place.k)
     root.position.set(place.x, place.y + pose.y * place.k + fy * place.k, pose.z * place.k)
     root.rotation.set(pose.rx + frx, pose.ry + fry, 0, 'YXZ')
+  }
+
+  // Projected bounds at the first frame of the entrance — the device's lowest point.
+  function entryBox() {
+    const saved = { ...pose }
+    pose.rx = device.start.rx
+    pose.ry = device.start.ry * dir
+    pose.y = ENTRY.y
+    pose.z = ENTRY.z
+    applyPose(0)
+    const box = projectedBox()
+    Object.assign(pose, saved)
+    applyPose(0)
+    return box
   }
 
   return {
@@ -319,12 +353,15 @@ const deviceFrame: TemplateFactory = (ctx) => {
       camera.position.set(0, 0, distance)
       camera.updateMatrixWorld()
 
-      // Caption: Mario's story type, bottom-left, lines rising from a mask.
+      // Caption: Mario's story type, lines rising from a mask, placed by TEXT_POSITION_PARAMS.
       const caption = ctx.text.caption?.trim() ?? ''
       const size = STORY_TYPE.size * s
       const side = STORY_TYPE.side * s
-      const bottom = (story ? STORY_TYPE.bottom : STORY_TYPE.side + 8) * s
-      let captionTopDesign = DH
+      // Design px. Bottom keeps the last line box on this margin (Mario's story type); Top puts
+      // the first line's cap top on it, like the caption card (_lib/caption.ts).
+      const edge = story ? STORY_TYPE.bottom : STORY_TYPE.side + 8
+      let capOffset = 0 // design px, line top → cap top
+      let captionH = 0 // design px
       if (caption) {
         captionLayout = ctx.layoutText(caption, {
           family: 'PP Neue Montreal',
@@ -333,15 +370,121 @@ const deviceFrame: TemplateFactory = (ctx) => {
           maxWidth: ctx.width - side * 2,
           letterSpacing: STORY_TYPE.tracking * size,
         })
+        captionH = captionLayout.height / s
+        captionX = captionLayout.lines.map((line) => textLineX(ctx.width, line.width, align, side))
+        const measure = new OffscreenCanvas(8, 8).getContext('2d')!
+        measure.font = captionLayout.font
+        measure.letterSpacing = `${STORY_TYPE.tracking * size}px`
+        measure.textBaseline = 'top'
+        capOffset = -measure.measureText('H').actualBoundingBoxAscent / s
+      }
+
+      // Where the device rests: the space the caption leaves (or the whole frame), inside margins.
+      // Caption at the bottom → device above it; at the top → device below it; Middle → caption
+      // and device as one lockup centred on the frame, caption above (the device rises into place
+      // from below, away from the type, and its floor shadow stays clear of it).
+      const margin = story ? 48 : ctx.aspect === '4:5' ? 72 : 88
+      const gap = story ? 150 : 96
+      const spaceTop = story ? 200 : 84
+      const spaceBottom = DH - (story ? 230 : 84)
+      let captionPx = 0 // canvas px, top of the caption's first line box
+      const region = { x0: margin, x1: DW - margin, y0: spaceTop, y1: spaceBottom }
+      if (captionLayout && position === 'Bottom') {
+        captionPx = ctx.height - edge * s - captionLayout.height
+        region.y1 = captionPx / s - gap
+      } else if (captionLayout) {
+        captionPx = (edge - capOffset) * s
+        region.y0 = captionPx / s + captionH + gap
+      }
+      region.y1 = Math.max(region.y0 + 200, region.y1)
+      rest.rx = device.rest.rx
+      rest.ry = device.rest.ry * dir
+      pose.rx = rest.rx
+      pose.ry = rest.ry
+      pose.y = 0
+      pose.z = 0
+      // Fit iteratively (perspective makes the projected box depend on position and scale).
+      const fit = () => {
+        for (let i = 0; i < 4; i++) {
+          applyPose(0)
+          let box = projectedBox()
+          place.k *= Math.min(
+            (region.x1 - region.x0) / (box.x1 - box.x0),
+            (region.y1 - region.y0) / (box.y1 - box.y0)
+          )
+          applyPose(0)
+          box = projectedBox()
+          place.x += (region.x0 + region.x1) / 2 - (box.x0 + box.x1) / 2
+          place.y -= (region.y0 + region.y1) / 2 - (box.y0 + box.y1) / 2
+        }
+        applyPose(0)
+        restBox = projectedBox()
+      }
+      // The entrance starts lower and tilted: when the device rests near the bottom edge (caption
+      // at the top, or a tall device), raise the space's floor until the first frame clears it.
+      const clearEntry = () => {
+        for (let i = 0; i < 6; i++) {
+          const over = entryBox().y1 - (DH - margin)
+          if (over <= 0.5 || region.y1 <= region.y0 + 200) break
+          region.y1 = Math.max(region.y0 + 200, region.y1 - over)
+          fit()
+        }
+      }
+      place.k = 1
+      fit()
+      clearEntry()
+      // Device size scales the fitted device; Device left–right / top–bottom move it through the
+      // space (margin to margin; the space the caption leaves). A device bigger than that runs off
+      // the frame's edges — vertically always away from the caption, never into it.
+      const width = (restBox.x1 - restBox.x0) * deviceScale
+      const x0 = margin + (DW - margin * 2 - width) * fx
+      if (captionLayout && position === 'Middle') {
+        // Same device size as Top (× Device size); the lockup (cap top → device bottom) is
+        // centred on the frame, never above the Top placement, nor so low that the device leaves
+        // its space or its entrance leaves the frame. Device top–bottom moves the lockup.
+        const h = (restBox.y1 - restBox.y0) * deviceScale
+        const entry = (entryBox().y1 - restBox.y1) * deviceScale
+        const floor = Math.min(spaceBottom, DH - margin - entry)
+        const top = captionPx / s
+        const lockup = captionH - capOffset + gap + h
+        const low = floor - h - gap - captionH
+        const mid = Math.max(top, Math.min(low, (DH - lockup) / 2 - capOffset))
+        const y = between(top, mid, Math.max(mid, low), fy)
+        captionPx = y * s
+        region.y0 = y + captionH + gap
+        region.y1 = region.y0 + h
+        if (custom) {
+          region.x0 = x0
+          region.x1 = x0 + width
+        }
+        fit()
+      } else if (custom) {
+        const h = (restBox.y1 - restBox.y0) * deviceScale
+        let { y0, y1 } = region
+        if (captionLayout && position === 'Bottom') y0 = Math.min(y0, y1 - h)
+        else if (captionLayout) y1 = Math.max(y1, y0 + h)
+        const y = y0 + (y1 - y0 - h) * fy
+        Object.assign(region, { x0, x1: x0 + width, y0: y, y1: y + h })
+        fit()
+        // The entrance starts lower: keep its first frame off a caption below.
+        const over = captionLayout && position === 'Bottom' ? entryBox().y1 - captionPx / s : 0
+        if (over > 0) {
+          region.y0 -= over
+          region.y1 -= over
+          fit()
+        }
+      }
+      floorY = restBox.y1 + (restBox.y1 - restBox.y0) * 0.05
+
+      if (captionLayout) {
         captionPad = Math.ceil(size * 0.35)
-        const top = ctx.height - bottom - captionLayout.height
-        captionTopDesign = top / s
-        captionTop = Math.floor(top - captionPad)
+        captionTop = Math.floor(captionPx - captionPad)
         captionCanvas = new OffscreenCanvas(
           ctx.width,
           Math.ceil(captionLayout.height + captionPad * 2)
         )
-        captionG = captionCanvas.getContext('2d')!
+        // A transparent 2D layer: CPU-rasterised (willReadFrequently) so glyphs are exact.
+        captionG = captionCanvas.getContext('2d', { willReadFrequently: true })!
         const texture = new THREE.CanvasTexture(captionCanvas)
         texture.colorSpace = THREE.SRGBColorSpace
         texture.minFilter = THREE.LinearFilter
@@ -367,41 +510,6 @@ const deviceFrame: TemplateFactory = (ctx) => {
         }
         captionLayout.lines.forEach(() => lines.push({ p: 0 }))
       }
-
-      // Where the device rests: the space above the caption (or the whole frame), inside margins.
-      const margin = story ? 48 : ctx.aspect === '4:5' ? 72 : 88
-      const regionTop = story ? 200 : 84
-      const gap = story ? 150 : 96
-      const regionBottom = caption ? captionTopDesign - gap : DH - (story ? 230 : 84)
-      const region = {
-        x0: margin,
-        x1: DW - margin,
-        y0: regionTop,
-        y1: Math.max(regionTop + 200, regionBottom),
-      }
-      rest.rx = device.rest.rx
-      rest.ry = device.rest.ry * dir
-      pose.rx = rest.rx
-      pose.ry = rest.ry
-      pose.y = 0
-      pose.z = 0
-      // Fit iteratively (perspective makes the projected box depend on position and scale).
-      place.k = 1
-      for (let i = 0; i < 4; i++) {
-        applyPose(0)
-        let box = projectedBox()
-        place.k *= Math.min(
-          (region.x1 - region.x0) / (box.x1 - box.x0),
-          (region.y1 - region.y0) / (box.y1 - box.y0)
-        )
-        applyPose(0)
-        box = projectedBox()
-        place.x += (region.x0 + region.x1) / 2 - (box.x0 + box.x1) / 2
-        place.y -= (region.y0 + region.y1) / 2 - (box.y0 + box.y1) / 2
-      }
-      applyPose(0)
-      restBox = projectedBox()
-      floorY = restBox.y1 + (restBox.y1 - restBox.y0) * 0.05
 
       // Local bounding-box corners for the shadow estimate each frame.
       const localBox = new THREE.Box3()
@@ -468,8 +576,8 @@ const deviceFrame: TemplateFactory = (ctx) => {
       const start = device.start
       pose.rx = start.rx
       pose.ry = start.ry * dir
-      pose.y = -90
-      pose.z = -260
+      pose.y = ENTRY.y
+      pose.z = ENTRY.z
       const tl = ctx.timeline()
       tl.to(pose, { rx: rest.rx, ry: rest.ry, duration: settle, ease: settleEase }, 0)
       tl.to(pose, { y: 0, z: 0, duration: settle * 0.85, ease: settleEase }, 0)
@@ -526,7 +634,6 @@ const deviceFrame: TemplateFactory = (ctx) => {
           g.letterSpacing = `${STORY_TYPE.tracking * size}px`
           g.textBaseline = 'top'
           g.fillStyle = textColor()
-          const x = STORY_TYPE.side * s
           layout.lines.forEach((line, li) => {
             const pr = lines[li]?.p ?? 1
             if (pr <= 0) return
@@ -537,7 +644,8 @@ const deviceFrame: TemplateFactory = (ctx) => {
             g.clip()
             g.globalAlpha = Math.min(1, pr * 1.6)
             const dy = (1 - pr) * size * 1.25
-            line.words.forEach((word) => g.fillText(word.text, x + line.x + word.x, top + dy))
+            const x = captionX[li]!
+            line.words.forEach((word) => g.fillText(word.text, x + word.x, top + dy))
             g.restore()
           })
           captionTexture.needsUpdate = true

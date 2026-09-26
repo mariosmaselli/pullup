@@ -1,10 +1,11 @@
 import type { TemplateMeta } from '@shared/template.ts'
+import { TEXT_POSITION_PARAMS } from '../_lib/layout.ts'
 
 export const meta: TemplateMeta = {
   id: 'text-story',
   name: 'Text story',
-  description: 'Large type on a dark canvas, set bottom-left — updates, thoughts, announcements.',
-  version: 1,
+  description: 'Large type on a dark canvas — updates, thoughts, announcements.',
+  version: 2,
   kind: 'still',
   aspects: ['9:16', '4:5', '1:1'],
   media: { min: 0, max: 0, kinds: [] },
@@ -22,12 +23,7 @@ export const meta: TemplateMeta = {
     color: { type: 'color', label: 'Text', default: '#ffffff' },
     size: { type: 'number', label: 'Type size', min: 48, max: 160, step: 2, default: 84 },
     weight: { type: 'select', label: 'Weight', options: ['Regular', 'Medium'], default: 'Regular' },
-    position: {
-      type: 'select',
-      label: 'Position',
-      options: ['Bottom', 'Middle', 'Top'],
-      default: 'Bottom',
-    },
+    ...TEXT_POSITION_PARAMS,
   },
   fonts: [
     { family: 'PP Neue Montreal', file: 'PPNeueMontreal-Regular.ttf', weight: '400' },

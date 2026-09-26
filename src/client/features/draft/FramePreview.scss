@@ -1,32 +1,57 @@
-// Proportions taken from Mario's reference story (1080x1920): ~40px side margin,
-// ~88px type, bottom margin ~160px — expressed in container units so any size matches.
+// A frame at any size, in container units of a 1080 px wide design (1cqw = 10.8 design px), so
+// the stand-in's proportions match the templates: 40 px side margin, 160 px story margins top and
+// bottom (40 px on a feed slide with media), type at the template's size (84 px by default).
+// data-position / data-align / data-fit and the --frame-* properties follow the frame's options.
 .frame-preview {
   position: relative;
   overflow: hidden;
   container-type: inline-size;
   aspect-ratio: 9 / 16;
   border-radius: var(--radius-m);
-  background: #101010;
-  color: #fff;
+  background: var(--frame-ground, #101010);
+  color: var(--frame-ink, #fff);
 
   &[data-aspect='4:5'] {
     aspect-ratio: 4 / 5;
   }
 
+  // Legibility gradient on the text's side of the frame.
   &[data-media='true']::after {
     content: '';
     position: absolute;
     inset: 45% 0 0;
     background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.55));
   }
+
+  &[data-media='true'][data-position='Top']::after {
+    inset: 0 0 45%;
+    background: linear-gradient(to top, transparent, rgb(0 0 0 / 0.55));
+  }
+
+  &[data-media='true'][data-position='Middle']::after {
+    inset: 20% 0;
+    background: linear-gradient(transparent, rgb(0 0 0 / 0.45), transparent);
+  }
 }
 
+// Sized like the template sizes it (a rect that may run past the frame), or — without the
+// media's dimensions — covering / fitting the frame.
 .frame-preview__media {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+
+  [data-fit='true'] & {
+    object-fit: contain;
+  }
+
+  &[data-sized='true'] {
+    inset: auto;
+    max-width: none;
+    object-fit: fill;
+  }
 }
 
 .frame-preview__badge {
@@ -36,6 +61,7 @@
   z-index: 1;
   padding: 0.6cqw 2cqw;
   border-radius: 999px;
+  color: #fff;
   font-family: var(--font-mono);
   font-size: 4cqw;
   background: rgb(0 0 0 / 0.55);
@@ -44,18 +70,68 @@
 .frame-preview__text {
   position: absolute;
   right: 3.7cqw;
-  bottom: 8.3cqw;
+  bottom: 14.8cqw;
   left: 3.7cqw;
   z-index: 1;
   font-family: 'PP Neue Montreal', 'Neue Montreal', var(--font-sans);
-  font-size: 8.2cqw;
+  font-size: calc(var(--frame-type, 7.78) * 1cqw);
   font-weight: 400;
-  line-height: 1.02;
+  line-height: 0.98;
   letter-spacing: -0.01em;
   white-space: pre-wrap;
   overflow-wrap: break-word;
 
-  [data-aspect='4:5'] & {
-    font-size: 7cqw;
+  [data-aspect='4:5'][data-media='true'] & {
+    bottom: 3.7cqw;
   }
+
+  [data-position='Top'] & {
+    top: 14.8cqw;
+    bottom: auto;
+  }
+
+  [data-aspect='4:5'][data-media='true'][data-position='Top'] & {
+    top: 3.7cqw;
+  }
+
+  [data-position='Middle'] & {
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+
+  [data-align='center'] & {
+    text-align: center;
+  }
+}
+
+// The live preview (a canvas the render worker draws) covers the stand-in once it has drawn.
+.frame-preview__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease-out);
+
+  [data-live='shown'] > & {
+    opacity: 1;
+  }
+}
+
+// Once the live frame is up, only a failure is badged (over the canvas).
+.frame-preview[data-live='shown'] .frame-preview__badge {
+  z-index: 3;
+}
+
+// Where a pointer scrub is, along the bottom edge.
+.frame-preview__scrub {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  height: 2px;
+  background: #fff;
+  pointer-events: none;
 }

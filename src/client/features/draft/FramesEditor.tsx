@@ -1,15 +1,24 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Platform } from '@shared/constants.ts'
-import type { Asset, Segment } from '@shared/types.ts'
+import type { Asset, FrameTemplate, Segment } from '@shared/types.ts'
 import type { Render } from '@shared/template.ts'
-import { renderForFrame } from '@shared/frames.ts'
+import { frameAssetIds, renderForFrame } from '@shared/frames.ts'
+import { AnimationExport } from '../../components/AnimationExport/AnimationExport.tsx'
 import { Button } from '../../components/Button/Button.tsx'
-import { assetTitle } from '../../lib/format.ts'
 import { PLATFORMS } from '../../lib/platforms.ts'
-import { compatibleTemplates, frameInputs, withTemplate } from '../../lib/frame-templates.ts'
+import {
+  changedParams,
+  compatibleTemplates,
+  frameInputs,
+  frameMediaKinds,
+  withTemplate,
+  type MediaKind,
+} from '../../lib/frame-templates.ts'
 import { useRenders } from '../../lib/queries.ts'
 import { renderTemplate, resolveMedia } from '../../render/client.ts'
 import { templateMeta } from '../../render/templates.ts'
+import { FrameMedia } from './FrameMedia.tsx'
+import { FrameOptions } from './FrameOptions.tsx'
 import { FramePreview } from './FramePreview.tsx'
 import './FramesEditor.scss'
 
@@ -19,11 +28,13 @@ interface Props {
   segments: Segment[]
   caption: string
   sources: Asset[]
+  // Media on the saved post (every frame's), offered next to the sources.
+  postMedia: Asset[]
   byId: Map<string, Asset>
   copied: number | 'all' | null
   // Unsaved edits: the zip is built from the saved post, so it would be out of date.
   dirty: boolean
-  onChange: (segments: Segment[]) => void
+  onChange: Dispatch<SetStateAction<Segment[]>>
   onCaption: (caption: string) => void
   onCopy: (text: string, which: number | 'all') => void
 }
@@ -35,8 +46,10 @@ const move = <T,>(list: T[], from: number, to: number) => {
   return next
 }
 
+const isVisual = (a: Asset | undefined): a is Asset => a?.kind === 'image' || a?.kind === 'video'
+
 // Instagram stories (9:16 frames) and carousels (4:5 slides + caption). Each frame has on-screen
-// text and optionally one image or video from the idea's material.
+// text and any number of images/videos (in order), rendered by a template with its own options.
 export function FramesEditor(props: Props) {
   const {
     postId,
@@ -44,6 +57,7 @@ export function FramesEditor(props: Props) {
     segments,
     caption,
     sources,
+    postMedia,
     byId,
     copied,
     dirty,
@@ -53,13 +67,17 @@ export function FramesEditor(props: Props) {
   } = props
   const config = PLATFORMS[platform]
   const frames = config.frames as Exclude<typeof config.frames, false>
-  // The idea's images/videos, plus anything a frame already uses (it may not be a source).
-  const visual = [
+  // The idea's images/videos, media on the post and anything a frame uses (it may not be a source).
+  const suggested = [
     ...sources,
-    ...segments
-      .map((s) => s.assetId && byId.get(s.assetId))
-      .filter((a): a is Asset => !!a && !sources.includes(a)),
-  ].filter((a, i, all) => (a.kind === 'image' || a.kind === 'video') && all.indexOf(a) === i)
+    ...postMedia,
+    ...segments.flatMap(frameAssetIds).map((id) => byId.get(id)),
+  ].filter((a, i, all): a is Asset => isVisual(a) && all.indexOf(a) === i)
+  // "Show all media": every finished image/video in the library.
+  const library = useMemo(
+    () => [...byId.values()].filter((a) => isVisual(a) && a.processingStatus === 'ready'),
+    [byId]
+  )
 
   // Stable identity per frame, so reordering moves the DOM (and focus) with the frame.
   const nextKey = useRef(0)
@@ -72,28 +90,71 @@ export function FramesEditor(props: Props) {
     onChange(next)
   }
 
+  // Functional: several renders in a row each record their frame's template.
   const update = (i: number, patch: Partial<Segment>) =>
-    onChange(segments.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+    onChange((current) => current.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+
+  const kindOf = (id: string): MediaKind => (byId.get(id)?.kind === 'video' ? 'video' : 'image')
+
+  // New media keep the frame's template (and its options) while it still fits them; otherwise the
+  // frame falls back to the default for its media.
+  const setMedia = (i: number, ids: string[]) => {
+    const template = segments[i]!.template
+    const fits = compatibleTemplates(platform, ids.map(kindOf)).some((m) => m.id === template?.id)
+    const first = ids[0]
+    update(i, {
+      assetId: first ?? null,
+      kind: first ? kindOf(first) : 'text',
+      assetIds: first ? ids : null,
+      template: fits ? template : null,
+    })
+  }
+
+  // Options: only settings that differ from the template's defaults are kept on the frame.
+  const setParams = (i: number, template: FrameTemplate, params: Record<string, unknown>) => {
+    const { params: _, ...rest } = template
+    update(i, { template: Object.keys(params).length ? { ...rest, params } : rest })
+  }
+  const [optionsOpen, setOptionsOpen] = useState<Set<number>>(() => new Set())
+  const toggleOptions = (key: number) =>
+    setOptionsOpen((open) => {
+      const next = new Set(open)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
 
   // ── Rendering frames with templates ──────────────────────────────────────────────────────
   const { data: renders = [] } = useRenders(postId)
   const [rendering, setRendering] = useState<Record<number, number>>({}) // index → progress 0–1
   const [renderErrors, setRenderErrors] = useState<Record<number, string>>({})
-  const effective = segments.map((s) => withTemplate(platform, s))
+  const kinds = segments.map((s) => frameMediaKinds(s, byId))
+  const effective = segments.map((s, i) => withTemplate(platform, s, kinds[i]!))
   const status = effective.map((frame, i) => renderForFrame(renders, frame, i))
   const pending = status.map((s, i) => (!s.current ? i : -1)).filter((i) => i >= 0)
   const busy = Object.keys(rendering).length > 0
+
+  // One live preview at a time (it runs a render worker): the frame whose Options were opened
+  // last and are still open. Other frames show their render while it is current, else a stand-in.
+  const hasOptions = (i: number) => {
+    const id = effective[i]?.template?.id
+    return Object.keys((id && templateMeta(id)?.params) || {}).length > 0
+  }
+  const liveKey = [...optionsOpen].reverse().find((key) => {
+    const i = keys.current.indexOf(key)
+    return i >= 0 && hasOptions(i)
+  })
 
   async function renderFrame(i: number): Promise<Render | null> {
     const frame = effective[i]!
     const meta = frame.template && templateMeta(frame.template.id)
     if (!meta) return null
-    // Keep the template choice on the frame so saving the draft remembers it.
-    if (!segments[i]!.template) update(i, { template: frame.template })
+    // Keep the template choice on the frame so saving the draft remembers it (also replaces a
+    // template that was removed or no longer fits the frame's media).
+    if (segments[i]!.template?.id !== frame.template!.id) update(i, { template: frame.template })
     setRendering((r) => ({ ...r, [i]: 0 }))
     setRenderErrors(({ [i]: _, ...rest }) => rest)
     try {
-      const media = frame.assetId ? await resolveMedia([frame.assetId]) : []
+      const media = await resolveMedia(frameAssetIds(frame))
       return await renderTemplate({
         meta,
         inputs: frameInputs(platform, frame, meta, media),
@@ -140,16 +201,26 @@ export function FramesEditor(props: Props) {
       </div>
 
       {segments.map((segment, i) => {
-        const asset = segment.assetId ? byId.get(segment.assetId) : undefined
+        const ids = frameAssetIds(segment)
+        const asset = ids[0] ? byId.get(ids[0]) : undefined
         const length = config.length(segment.text)
         const frame = effective[i]!
+        const meta = frame.template ? templateMeta(frame.template.id) : undefined
+        const settings = Object.keys(meta?.params ?? {}).length
+        // Stale keys (a setting the template no longer has) don't count as changes.
+        const changed = meta
+          ? Object.keys(changedParams(meta, frame.template?.params ?? {})).length
+          : 0
+        const optionsShown = optionsOpen.has(keys.current[i]!) && !!meta && settings > 0
+        const live = optionsShown && keys.current[i] === liveKey
+        const inputs = meta ? frameInputs(platform, frame, meta, []) : undefined
         const { render, current } = status[i]!
         const progress = rendering[i]
-        const options = compatibleTemplates(platform, segment)
+        const options = compatibleTemplates(platform, kinds[i]!)
         return (
           <div key={keys.current[i]} className="frames-editor__frame flex">
             <div className="frames-editor__preview flex flex-col shrink-0">
-              {render?.url ? (
+              {!live && current && render?.url ? (
                 <div className="frames-editor__render" data-aspect={frames.aspect}>
                   {render.kind === 'video' ? (
                     <video
@@ -165,7 +236,14 @@ export function FramesEditor(props: Props) {
                   )}
                 </div>
               ) : (
-                <FramePreview segment={segment} asset={asset} aspect={frames.aspect} />
+                <FramePreview
+                  segment={segment}
+                  asset={asset}
+                  count={ids.length}
+                  aspect={frames.aspect}
+                  params={inputs?.params}
+                  live={live && meta && inputs ? { meta, inputs, assetIds: ids } : undefined}
+                />
               )}
               <span
                 className="frames-editor__state -meta"
@@ -173,6 +251,7 @@ export function FramesEditor(props: Props) {
                   progress !== undefined ? 'busy' : current ? 'ok' : render ? 'stale' : 'none'
                 }
               >
+                {live ? 'Live · ' : ''}
                 {progress !== undefined
                   ? `Rendering ${Math.round(progress * 100)}%`
                   : current
@@ -229,38 +308,19 @@ export function FramesEditor(props: Props) {
                 placeholder="On-screen text (optional)"
                 onChange={(e) => update(i, { text: e.target.value })}
               />
-              <div className="flex items-center justify-between">
-                <select
-                  className="frames-editor__media -p1"
-                  value={segment.assetId ?? ''}
-                  aria-label={`Media for ${frames.noun} ${i + 1}`}
-                  onChange={(e) => {
-                    const picked = visual.find((a) => a.id === e.target.value)
-                    // A new kind of media may need a different template: fall back to the default.
-                    update(
-                      i,
-                      picked
-                        ? {
-                            assetId: picked.id,
-                            kind: picked.kind as 'image' | 'video',
-                            template: null,
-                          }
-                        : { assetId: null, kind: 'text', template: null }
-                    )
-                  }}
-                >
-                  <option value="">Text only</option>
-                  {visual.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.kind === 'video' ? 'Video · ' : 'Image · '}
-                      {assetTitle(a)}
-                    </option>
-                  ))}
-                </select>
-                <span className="-meta frames-editor__count" data-over={length > config.limit}>
-                  {length}/{config.limit}
-                </span>
-              </div>
+              <FrameMedia
+                ids={ids}
+                byId={byId}
+                suggested={suggested}
+                library={library}
+                label={`${frames.noun} ${i + 1}`}
+                aside={
+                  <span className="-meta frames-editor__count" data-over={length > config.limit}>
+                    {length}/{config.limit}
+                  </span>
+                }
+                onChange={(next) => setMedia(i, next)}
+              />
               <div className="frames-editor__template flex items-center">
                 <select
                   className="frames-editor__media -p1"
@@ -270,26 +330,28 @@ export function FramesEditor(props: Props) {
                     update(i, { template: e.target.value ? { id: e.target.value } : null })
                   }
                 >
-                  {options.length ? null : <option value="">No template fits</option>}
-                  {options.map((meta) => (
-                    <option key={meta.id} value={meta.id}>
-                      {meta.name}
-                      {meta.kind === 'video' ? ' · video' : ''}
+                  {options.length ? null : (
+                    <option value="">
+                      {ids.length > 1
+                        ? `No template takes ${ids.length} media`
+                        : 'No template fits'}
+                    </option>
+                  )}
+                  {options.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.kind === 'video' ? ' · video' : ''}
                     </option>
                   ))}
                 </select>
-                {frame.template && templateMeta(frame.template.id)?.kind === 'video' ? (
+                {frame.template && meta?.kind === 'video' ? (
                   <label className="frames-editor__duration -p1 flex items-center">
                     <input
                       type="number"
-                      min={templateMeta(frame.template.id)?.duration?.min ?? 3}
-                      max={templateMeta(frame.template.id)?.duration?.max ?? 15}
+                      min={meta.duration?.min ?? 3}
+                      max={meta.duration?.max ?? 15}
                       step={0.5}
-                      value={
-                        frame.template.duration ??
-                        templateMeta(frame.template.id)?.duration?.default ??
-                        6
-                      }
+                      value={frame.template.duration ?? meta.duration?.default ?? 6}
                       onChange={(e) =>
                         update(i, {
                           template: { ...frame.template!, duration: Number(e.target.value) },
@@ -313,6 +375,40 @@ export function FramesEditor(props: Props) {
                   </a>
                 ) : null}
               </div>
+              {render?.kind === 'video' && render.status === 'ready' && render.url ? (
+                <AnimationExport render={render} />
+              ) : null}
+              <div className="frames-editor__options flex items-center">
+                <button
+                  type="button"
+                  className="frames-editor__options-toggle -p1 flex items-center"
+                  aria-expanded={optionsShown}
+                  disabled={!settings}
+                  onClick={() => toggleOptions(keys.current[i]!)}
+                >
+                  <span className="frames-editor__caret" aria-hidden />
+                  Options
+                  {changed ? (
+                    <span className="frames-editor__muted -meta">{changed} changed</span>
+                  ) : null}
+                </button>
+                {changed && frame.template ? (
+                  <button
+                    type="button"
+                    className="frames-editor__reset -p1"
+                    onClick={() => setParams(i, frame.template!, {})}
+                  >
+                    Reset
+                  </button>
+                ) : null}
+              </div>
+              {optionsShown && frame.template ? (
+                <FrameOptions
+                  meta={meta!}
+                  params={frame.template.params ?? {}}
+                  onChange={(params) => setParams(i, frame.template!, params)}
+                />
+              ) : null}
               {renderErrors[i] ? (
                 <p className="frames-editor__error -p1">{renderErrors[i]}</p>
               ) : null}

@@ -162,3 +162,47 @@
 .frames-editor__error {
   color: var(--signal);
 }
+
+// Always one line under the template row, so a frame doesn't change height until Options opens.
+.frames-editor__options {
+  gap: 10px;
+  min-height: 20px;
+}
+
+.frames-editor__options-toggle {
+  gap: 6px;
+  color: var(--muted);
+
+  &:hover:not(:disabled),
+  &[aria-expanded='true'] {
+    color: var(--ink);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  &[aria-expanded='true'] .frames-editor__caret {
+    transform: rotate(90deg);
+  }
+}
+
+.frames-editor__caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentcolor;
+  transition: transform var(--duration) var(--ease-out);
+}
+
+.frames-editor__reset {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: var(--ink);
+  }
+}

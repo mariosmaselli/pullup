@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import type { Aspect, MediaInput, Render, TemplateInputs, TemplateMeta } from '@shared/template.ts'
+import { AnimationExport } from '../../components/AnimationExport/AnimationExport.tsx'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { MediaPicker } from '../../components/MediaPicker/MediaPicker.tsx'
@@ -113,7 +114,7 @@ function Studio({ meta }: { meta: TemplateMeta }) {
     const controller = new PreviewController(canvas, {
       onLoaded: (info) => {
         setPreviewError(null)
-        setTime((current) => ({ ...current, duration: info.duration }))
+        setTime((current) => ({ ...current, t: info.t, duration: info.duration }))
       },
       onTime: (t, playing) => setTime((current) => ({ ...current, t, playing })),
       onError: setPreviewError,
@@ -127,11 +128,11 @@ function Studio({ meta }: { meta: TemplateMeta }) {
     }
   }, [])
 
-  // Reload the preview when inputs change (debounced while typing).
+  // Reload the preview on every change: the controller coalesces them to one per animation frame
+  // and keeps the time, play state and last frame (a slider drag updates live, video keeps going).
   useEffect(() => {
     if (needsMedia || preparing || media.length !== mediaIds.length) return
-    const handle = setTimeout(() => preview.current?.load(meta, inputs, PREVIEW_WIDTH), 120)
-    return () => clearTimeout(handle)
+    preview.current?.load(meta, inputs, PREVIEW_WIDTH)
   }, [meta, inputs, needsMedia, preparing, media.length, mediaIds.length, previewEpoch])
 
   const templateRenders = renders.filter((r) => r.templateId === meta.id)
@@ -373,6 +374,7 @@ function RenderResult({ render }: { render: Render }) {
       ) : (
         <span className="-meta template-studio__ok">Passes Instagram’s upload checks</span>
       )}
+      {render.kind === 'video' ? <AnimationExport render={render} /> : null}
     </div>
   )
 }

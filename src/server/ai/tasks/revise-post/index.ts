@@ -1,11 +1,12 @@
 import type { Platform } from '@shared/constants.ts'
 import type { Segment } from '@shared/types.ts'
+import { carryOverFrames, frameAssetIds } from '@shared/frames.ts'
 import type { AiDeps } from '../../index.ts'
 import { loadPrompt, platformRules } from '../../prompts.ts'
 import { runAi } from '../../run.ts'
 import { AiError } from '../../provider.ts'
 import { DraftSchema } from '../../schemas.ts'
-import { cleanSegments, writeRevision } from '../../../services/posts.ts'
+import { cleanSegments, hasFrameMedia, writeRevision } from '../../../services/posts.ts'
 import { writingProfile } from '../../../services/profiles.ts'
 
 const prompt = loadPrompt('revise-post', 'v2')
@@ -21,11 +22,19 @@ interface PostRow {
   current_revision_id: string | null
 }
 
+// Instagram frames list all their media; `asset=` is the first one (what the AI returns as
+// `assetId` — the rest are carried over after the revision).
+const describeMedia = (s: Segment) => {
+  const [first, ...more] = frameAssetIds(s)
+  if (!first) return ''
+  return ` asset=${first}${more.length ? `; slideshow of ${more.length + 1}: ${[first, ...more].join(', ')}` : ''}`
+}
+
 const describeSegments = (platform: Platform, segments: Segment[]) =>
   segments
     .map((s, i) =>
-      platform === 'ig_story' || platform === 'ig_feed'
-        ? `[${i + 1}] (${s.kind ?? 'text'}${s.assetId ? ` asset=${s.assetId}` : ''}) ${s.text}`
+      hasFrameMedia(platform)
+        ? `[${i + 1}] (${s.kind ?? 'text'}${describeMedia(s)}) ${s.text}`
         : `[${i + 1}] ${s.text}`
     )
     .join('\n')
@@ -50,11 +59,17 @@ export async function revisePost(
           asset_id: string
         }[]
       ).map((r) => r.asset_id)
-    : (
-        db.prepare('SELECT asset_id FROM post_media WHERE post_id = ?').all(post.id) as {
-          asset_id: string
-        }[]
-      ).map((r) => r.asset_id)
+    : [
+        ...new Set(
+          (
+            db
+              .prepare(
+                'SELECT asset_id FROM post_media WHERE post_id = ? ORDER BY segment_index, position'
+              )
+              .all(post.id) as { asset_id: string }[]
+          ).map((r) => r.asset_id)
+        ),
+      ]
   const sources = await context.sources(assets.rows(sourceIds))
   const segments = current ? (JSON.parse(current.segments) as Segment[]) : []
 
@@ -98,12 +113,19 @@ export async function revisePost(
   )
 
   const allowed = new Set(sourceIds)
+  // Frames keep media Mario picked himself (it may not be in the material).
+  const frameMedia = new Set([...allowed, ...segments.flatMap(frameAssetIds)])
   const out = result.output
   const revisionId = db.transaction(() =>
     writeRevision(db, {
       postId: post.id,
       platform: post.platform,
-      segments: cleanSegments(db, post.platform, out.segments, allowed),
+      segments: cleanSegments(
+        db,
+        post.platform,
+        hasFrameMedia(post.platform) ? carryOverFrames(segments, out.segments) : out.segments,
+        frameMedia
+      ),
       caption: out.caption,
       author: 'ai',
       instruction: input.instruction,

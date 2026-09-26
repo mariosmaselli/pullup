@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Platform, PostFormat, PostStatus, SegmentKind } from '@shared/constants.ts'
 import type { Claim, Post, PostDetail, PostRevision, Segment } from '@shared/types.ts'
+import { frameAssetIds, MAX_FRAME_MEDIA } from '@shared/frames.ts'
 import type { DB } from '../db/index.ts'
 import { notify } from '../lib/events.ts'
 import { now } from './assets.ts'
@@ -34,10 +35,21 @@ interface RevisionRow {
   created_at: string
 }
 
-const toRevision = (r: RevisionRow, existing?: Set<string>): PostRevision => ({
+// A frame whose media was deleted since: drop the missing ids (the first remaining one becomes
+// `assetId`); with none left it's a text frame.
+function withoutDeleted(s: Segment, existing: Map<string, SegmentKind>): Segment {
+  const ids = frameAssetIds(s)
+  const kept = ids.filter((id) => existing.has(id))
+  if (kept.length === ids.length) return s
+  const { assetIds: _, ...rest } = s
+  if (!kept.length) return { ...rest, assetId: null, kind: 'text' }
+  return { ...rest, assetId: kept[0]!, kind: existing.get(kept[0]!)!, assetIds: kept }
+}
+
+const toRevision = (r: RevisionRow, existing?: Map<string, SegmentKind>): PostRevision => ({
   id: r.id,
   segments: (JSON.parse(r.segments) as Segment[]).map((s) =>
-    s.assetId && existing && !existing.has(s.assetId) ? { ...s, assetId: null, kind: 'text' } : s
+    existing ? withoutDeleted(s, existing) : s
   ),
   caption: r.caption,
   author: r.author,
@@ -74,8 +86,9 @@ export function formatFor(platform: Platform, segmentCount: number): PostFormat 
   return 'single'
 }
 
-// Keeps only real image/video assets on frames (optionally only those in `allowed`), sets `kind`
-// from the asset, and strips frame media from platforms that don't use it.
+// Keeps only real image/video assets on frames (optionally only those in `allowed`), in order and
+// without repeats; `assetId`/`kind` describe the first one and `assetIds` lists them all (omitted
+// on text frames). Strips frame media from platforms that don't use it.
 export function cleanSegments(
   db: DB,
   platform: Platform,
@@ -94,7 +107,7 @@ export function cleanSegments(
     ]
   }
   if (!hasFrameMedia(platform)) return segments.map((s) => ({ text: s.text }))
-  const ids = segments.map((s) => s.assetId).filter((id): id is string => !!id)
+  const ids = segments.flatMap(frameAssetIds)
   const kinds = new Map(
     (
       db
@@ -106,10 +119,12 @@ export function cleanSegments(
     ).map((r) => [r.id, r.kind])
   )
   return segments.map((s) => {
-    const kind =
-      s.assetId && (!allowed || allowed.has(s.assetId)) ? kinds.get(s.assetId) : undefined
-    const frame: Segment = kind
-      ? { text: s.text, assetId: s.assetId!, kind }
+    const media = [...new Set(frameAssetIds(s))]
+      .filter((id) => kinds.has(id) && (!allowed || allowed.has(id)))
+      .slice(0, MAX_FRAME_MEDIA)
+    const first = media[0]
+    const frame: Segment = first
+      ? { text: s.text, assetId: first, kind: kinds.get(first)!, assetIds: media }
       : { text: s.text, assetId: null, kind: 'text' }
     // Keep the frame's template choice (Instagram frames are rendered by templates).
     if (s.template) frame.template = s.template
@@ -154,14 +169,27 @@ export function writeRevision(db: DB, rev: NewRevision): string {
   return id
 }
 
-// Media rows only for assets that still exist: an old revision may point at a deleted asset.
+// One row per media of every frame (position = its place in the frame), only for assets that
+// still exist: an old revision may point at a deleted asset. The key is (post, asset, frame), so
+// one asset may appear in several frames.
 function syncFrameMedia(db: DB, postId: string, segments: Segment[]) {
   db.prepare('DELETE FROM post_media WHERE post_id = ?').run(postId)
+  const existing = new Set(
+    (
+      db
+        .prepare('SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))')
+        .all(JSON.stringify(segments.flatMap(frameAssetIds))) as { id: string }[]
+    ).map((r) => r.id)
+  )
   const insert = db.prepare(
     `INSERT OR IGNORE INTO post_media (post_id, asset_id, segment_index, position)
-     SELECT ?, id, ?, 0 FROM assets WHERE id = ?`
+     VALUES (?, ?, ?, ?)`
   )
-  segments.forEach((s, i) => s.assetId && insert.run(postId, i, s.assetId))
+  segments.forEach((s, i) =>
+    frameAssetIds(s)
+      .filter((id) => existing.has(id))
+      .forEach((assetId, position) => insert.run(postId, assetId, i, position))
+  )
 }
 
 export function setAttachedMedia(db: DB, postId: string, assetIds: string[]) {
@@ -176,17 +204,17 @@ export function setAttachedMedia(db: DB, postId: string, assetIds: string[]) {
 // ── Store ───────────────────────────────────────────────────────────────────────────────────
 
 export function createPostStore(db: DB) {
-  // Asset ids (from frames) that still exist, so revisions never point at deleted assets.
+  // Frame media that still exists (id → kind), so revisions never point at deleted assets.
   const existingAssets = (revisions: RevisionRow[]) => {
     const ids = revisions.flatMap((r) =>
-      (JSON.parse(r.segments) as Segment[]).map((s) => s.assetId).filter(Boolean)
+      (JSON.parse(r.segments) as Segment[]).flatMap(frameAssetIds)
     )
-    return new Set(
+    return new Map(
       (
         db
-          .prepare('SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))')
-          .all(JSON.stringify(ids)) as { id: string }[]
-      ).map((r) => r.id)
+          .prepare('SELECT id, kind FROM assets WHERE id IN (SELECT value FROM json_each(?))')
+          .all(JSON.stringify(ids)) as { id: string; kind: SegmentKind }[]
+      ).map((r) => [r.id, r.kind])
     )
   }
 

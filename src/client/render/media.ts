@@ -8,7 +8,7 @@ const MAX_SHORT_SIDE = 2160
 const MAX_LONG_SIDE = 4096
 
 // Upright (EXIF applied), colour-managed bitmap, scaled down to MAX_SHORT/LONG_SIDE.
-export async function loadImage(url: string, signal: AbortSignal): Promise<ImageBitmap> {
+export async function loadImage(url: string, signal?: AbortSignal): Promise<ImageBitmap> {
   const blob = await (await fetch(url, { signal })).blob()
   const full = await createImageBitmap(blob, {
     imageOrientation: 'from-image',
@@ -29,6 +29,78 @@ export async function loadImage(url: string, signal: AbortSignal): Promise<Image
   return resized
 }
 
+// An opened video (its proxy): one demuxer and sample sink, shared by the layers that read it.
+// Every getSample() runs its own decoder, so layers of different sessions don't interfere.
+export interface VideoSource {
+  sink: VideoSampleSink
+  duration: number
+  width: number
+  height: number
+  dispose(): void
+}
+
+export async function openVideo(url: string): Promise<VideoSource> {
+  const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS })
+  try {
+    const track = (await input.getPrimaryVideoTrack()) as InputVideoTrack | null
+    if (!track) throw new Error('Video has no video track')
+    return {
+      sink: new VideoSampleSink(track),
+      duration: await track.computeDuration(),
+      width: track.displayWidth,
+      height: track.displayHeight,
+      dispose: () => input.dispose(),
+    }
+  } catch (err) {
+    input.dispose()
+    throw err
+  }
+}
+
+// Preview only: decoded images and opened videos, kept by URL between the sessions of one preview
+// worker, so changing a setting re-runs the template's setup() without fetching and decoding its
+// media again. Exports never use it (each runs in a fresh worker and opens its media itself).
+export class MediaCache {
+  private images = new Map<string, Promise<ImageBitmap>>()
+  private videos = new Map<string, Promise<VideoSource>>()
+
+  // A copy the session owns: templates and sessions close their bitmaps, the cache keeps its own.
+  async image(url: string): Promise<ImageBitmap> {
+    let loading = this.images.get(url)
+    if (!loading) {
+      loading = loadImage(url)
+      this.images.set(url, loading)
+      loading.catch(() => this.images.get(url) === loading && this.images.delete(url))
+    }
+    return createImageBitmap(await loading)
+  }
+
+  video(url: string): Promise<VideoSource> {
+    let opening = this.videos.get(url)
+    if (!opening) {
+      opening = openVideo(url)
+      this.videos.set(url, opening)
+      opening.catch(() => this.videos.get(url) === opening && this.videos.delete(url))
+    }
+    return opening
+  }
+
+  // Frees everything the given URLs don't use (call when no session is being set up).
+  keep(urls: Iterable<string>) {
+    const wanted = new Set(urls)
+    for (const [url, loading] of this.images) {
+      if (wanted.has(url)) continue
+      this.images.delete(url)
+      loading.then((b) => b.close()).catch(() => {})
+    }
+    for (const [url, opening] of this.videos) {
+      if (wanted.has(url)) continue
+      this.videos.delete(url)
+      opening.then((v) => v.dispose()).catch(() => {})
+    }
+  }
+}
+
 // A video input decoded frame-accurately with Mediabunny (WebCodecs) from its render proxy.
 export class VideoLayerImpl implements VideoLayer {
   duration: number
@@ -37,28 +109,31 @@ export class VideoLayerImpl implements VideoLayer {
   frame: VideoFrame | null = null
   version = 0
 
-  private input: Input | null = null
-  private sink: VideoSampleSink | null = null
+  private video: VideoSource | null = null
   private requested: number | null = null
   private shown: number | null = null
   private pending: Promise<void> | null = null
   private schedule: AsyncGenerator<unknown> | null = null
   private scheduleTimes: (number | null)[] = []
+  private disposed = false
 
-  constructor(private source: MediaInput) {
+  // With a cache, the opened video is shared (and outlives this layer); without, the layer owns it.
+  constructor(
+    readonly source: MediaInput,
+    private cache?: MediaCache
+  ) {
     this.duration = source.duration ?? 0
     this.width = source.width
     this.height = source.height
   }
 
   async init() {
-    this.input = new Input({ source: new UrlSource(this.source.url), formats: ALL_FORMATS })
-    const track = (await this.input.getPrimaryVideoTrack()) as InputVideoTrack | null
-    if (!track) throw new Error('Video has no video track')
-    this.sink = new VideoSampleSink(track)
-    this.duration = await track.computeDuration()
-    this.width = track.displayWidth
-    this.height = track.displayHeight
+    this.video = this.cache
+      ? await this.cache.video(this.source.url)
+      : await openVideo(this.source.url)
+    this.duration = this.video.duration
+    this.width = this.video.width
+    this.height = this.video.height
   }
 
   seek(localTime: number) {
@@ -73,18 +148,28 @@ export class VideoLayerImpl implements VideoLayer {
   }
 
   private setFrame(frame: VideoFrame) {
+    // A decode can finish after the layer was disposed (its session replaced mid-seek).
+    if (this.disposed) return frame.close()
     this.frame?.close()
     this.frame = frame
     this.version++
+  }
+
+  // Preview: start from the frame another layer of the same video shows (the session this one
+  // replaces), so a setting change never flashes an empty video.
+  adopt(other: VideoLayerImpl) {
+    if (other.source.url !== this.source.url || !other.frame) return
+    this.setFrame(other.frame.clone())
+    this.shown = other.shown
   }
 
   // Preview: never waits. Starts decoding the latest request and shows it when ready.
   resolvePreview() {
     const t = this.requested
     this.requested = null
-    if (t === null || t === this.shown || this.pending || !this.sink) return
+    if (t === null || t === this.shown || this.pending || !this.video) return
     this.shown = t
-    this.pending = this.sink
+    this.pending = this.video.sink
       .getSample(t)
       .then((sample) => {
         if (!sample) return
@@ -97,14 +182,22 @@ export class VideoLayerImpl implements VideoLayer {
       })
   }
 
+  // Preview, before a session is first shown: wait for a frame only if there is none at all.
+  // The request stays for resolvePreview() when the layer already shows something.
+  async resolveFirst() {
+    if (this.frame || this.requested === null) return
+    await this.resolveExact()
+  }
+
   // Export: exact frame, awaited. Used for stills (a single seek).
   async resolveExact() {
     const t = this.requested
     this.requested = null
-    if (t === null || !this.sink) return
-    const sample = await this.sink.getSample(t)
+    if (t === null || !this.video) return
+    const sample = await this.video.sink.getSample(t)
     if (sample) {
       this.setFrame(sample.toVideoFrame())
+      this.shown = t
       sample.close()
     }
   }
@@ -119,7 +212,7 @@ export class VideoLayerImpl implements VideoLayer {
       return t
     })
     const wanted = this.scheduleTimes.filter((t): t is number => t !== null)
-    this.schedule = wanted.length && this.sink ? this.sink.samplesAtTimestamps(wanted) : null
+    this.schedule = wanted.length && this.video ? this.video.sink.samplesAtTimestamps(wanted) : null
   }
 
   async resolveScheduled(frame: number) {
@@ -133,9 +226,10 @@ export class VideoLayerImpl implements VideoLayer {
   }
 
   dispose() {
+    this.disposed = true
     this.frame?.close()
     this.frame = null
     void this.schedule?.return(undefined)
-    this.input?.dispose()
+    if (!this.cache) this.video?.dispose()
   }
 }

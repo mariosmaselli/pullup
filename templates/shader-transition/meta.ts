@@ -1,16 +1,21 @@
 import type { TemplateMeta } from '@shared/template.ts'
+import { MEDIA_SIZE_PARAMS, TEXT_POSITION_PARAMS } from '../_lib/layout.ts'
+
+// Scale and position as everywhere else (same keys and labels), applied to each clip within its
+// Media size: Fill covers the frame × scale, Frame scales the framed media.
+const { scale, focusX, focusY } = MEDIA_SIZE_PARAMS
 
 export const meta: TemplateMeta = {
   id: 'shader-transition',
   name: 'Shader transitions',
   description:
-    'Two to six images or clips joined by GLSL transitions — liquid sweep, luminance displace, grain dissolve or sliced bands — with an optional caption.',
-  version: 1,
+    'Two to twelve images or clips joined by GLSL transitions — liquid sweep, luminance displace, grain dissolve or sliced bands — full bleed or framed, scaled and placed as you like, with an optional caption at the top, middle or bottom.',
+  version: 3,
   kind: 'video',
   aspects: ['9:16', '4:5', '1:1'],
   fps: 30,
   duration: { default: 6, min: 3, max: 20 },
-  media: { min: 2, max: 6, kinds: ['image', 'video'], label: 'Images or clips, in order' },
+  media: { min: 2, max: 12, kinds: ['image', 'video'], label: 'Images or clips, in order' },
   text: {
     caption: { label: 'Caption', multiline: true, max: 120, optional: true, default: '' },
   },
@@ -31,13 +36,17 @@ export const meta: TemplateMeta = {
     },
     fit: {
       type: 'select',
-      label: 'Media fit',
+      label: 'Media size',
       options: ['Auto', 'Fill', 'Frame'],
       default: 'Auto',
     },
+    scale,
+    focusX,
+    focusY,
+    ...TEXT_POSITION_PARAMS,
     accent: { type: 'color', label: 'Accent', default: '#f2f1ec' },
     edge: { type: 'boolean', label: 'Accent layer in transitions', default: true },
-    background: { type: 'color', label: 'Ground (framed media)', default: '#101010' },
+    background: { type: 'color', label: 'Ground (framed or scaled media)', default: '#101010' },
     shade: {
       type: 'number',
       label: 'Caption shade (full-bleed media)',

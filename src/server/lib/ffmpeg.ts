@@ -302,3 +302,142 @@ export async function sipsSize(input: string): Promise<{ width: number; height: 
   const height = Number(/pixelHeight: (\d+)/.exec(out)?.[1])
   return width && height ? { width, height } : null
 }
+
+// ── Animated exports (GIF / WebP) ────────────────────────────────────────────────────────────
+
+// Runs ffmpeg and reports how far through the input it has got (0–1). ffmpeg's own -progress
+// is output-based, and neither palettegen nor the WebP muxer write anything until the end, so the
+// filter chain carries `showinfo`, whose per-frame log line has the frame's pts_time.
+function runWithProgress(
+  args: string[],
+  durationMs: number | null,
+  onProgress?: (fraction: number) => void,
+  timeoutMs = 30 * 60_000
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'ffmpeg',
+      ['-hide_banner', '-nostats', '-loglevel', 'info', '-y', ...args],
+      {
+        timeout: timeoutMs,
+      }
+    )
+    const tail: string[] = []
+    let pending = ''
+    child.stdout.resume()
+    child.stderr.on('data', (chunk) => {
+      const lines = (pending + chunk).split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) {
+        const at = /pts_time:\s*([\d.]+)/.exec(line)
+        if (at) {
+          if (durationMs) onProgress?.(Math.min(1, (Number(at[1]) * 1000) / durationMs))
+        } else if (line.trim()) {
+          tail.push(line.trim())
+          if (tail.length > 3) tail.shift()
+        }
+      }
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`ffmpeg exited ${code}: ${[...tail, pending.trim()].join(' ').trim()}`))
+    })
+  })
+}
+
+export interface AnimationOptions {
+  width: number
+  height: number
+  fps: number
+  durationMs: number | null
+  onProgress?: (fraction: number) => void
+}
+
+const animationFilter = ({ width, height, fps }: AnimationOptions) =>
+  `fps=${fps},showinfo=checksum=0,scale=${width}:${height}:flags=lanczos`
+
+// Looping GIF in two passes: a 256-colour palette weighted towards what moves
+// (stats_mode=diff), then ordered (Bayer, finest pattern) dithering that re-dithers only the
+// rectangle that changed. Bayer rather than error diffusion: it doesn't crawl from frame to
+// frame, so it looks steadier and the file is about half the size for the same smoothness.
+// `palette` is a scratch PNG path; the caller removes it.
+export async function makeGif(
+  input: string,
+  output: string,
+  palette: string,
+  options: AnimationOptions
+) {
+  const filter = animationFilter(options)
+  // The palette pass is ~40% of the work.
+  await runWithProgress(
+    [
+      '-i',
+      input,
+      '-an',
+      '-vf',
+      `${filter},palettegen=stats_mode=diff`,
+      '-frames:v',
+      '1',
+      '-update',
+      '1',
+      '-f',
+      'image2',
+      palette,
+    ],
+    options.durationMs,
+    (p) => options.onProgress?.(p * 0.4)
+  )
+  await runWithProgress(
+    [
+      '-i',
+      input,
+      '-i',
+      palette,
+      '-an',
+      '-lavfi',
+      `[0:v]${filter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=1:diff_mode=rectangle`,
+      '-loop',
+      '0',
+      '-f',
+      'gif',
+      output,
+    ],
+    options.durationMs,
+    (p) => options.onProgress?.(0.4 + p * 0.6)
+  )
+}
+
+// Looping animated WebP, lossy. Frames go in as RGB so libwebp does its own YUV conversion —
+// handing it the render's BT.709 YUV would shift colours (WebP is BT.601).
+// Quality 85, not 75: the animation encoder treats pixels within a quality-derived tolerance
+// (±5 levels at 75, ±3 at 85) as unchanged and keeps the previous frame's there, which on slow
+// fades and moving text leaves blotches and ghost trails. 85 clears most of it for ~1.5× the
+// bytes — still a fraction of the GIF.
+export async function makeAnimatedWebp(input: string, output: string, options: AnimationOptions) {
+  await runWithProgress(
+    [
+      '-i',
+      input,
+      '-an',
+      '-vf',
+      `${animationFilter(options)},format=bgra`,
+      '-c:v',
+      'libwebp_anim',
+      '-lossless',
+      '0',
+      '-quality',
+      '85',
+      '-compression_level',
+      '4',
+      '-loop',
+      '0',
+      '-f',
+      'webp',
+      output,
+    ],
+    options.durationMs,
+    // The file is assembled after the last frame; hold just short of done until it is.
+    (p) => options.onProgress?.(p * 0.97)
+  )
+}

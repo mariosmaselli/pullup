@@ -1,9 +1,15 @@
 import type { TemplateFactory, TextLayout } from '@shared/template.ts'
+import { textBlockY, textLineX, textPlacement } from '../_lib/layout.ts'
 import { STORY_TYPE } from '../_lib/text.ts'
 import { parseAccents, type MarkedWord, type Segment } from './accent.ts'
 
 // Kinetic type, canvas 2D. The text is laid out once in setup(); every line gets a clip box
 // (its glyph bounds) and each word — or each whole line — rises out of it with expo.out.
+//
+// Placement (TEXT_POSITION_PARAMS): at Bottom — the default — the label is a masthead in the top
+// corner and balances the empty top of the frame. At Top and Middle it sits right above the body
+// as one lockup (at Top the two coincide; at Middle a corner label would float alone far from
+// the block). Both follow the text alignment.
 
 const FAMILY = 'PP Neue Montreal'
 // Design px (1080 wide).
@@ -58,17 +64,18 @@ const textReveal: TemplateFactory = (ctx) => {
   const s = ctx.scale
   const margin = ctx.aspect === '9:16' ? MARGIN.story : MARGIN.feed
   const side = STORY_TYPE.side * s
+  const { position, align } = textPlacement(ctx.params)
   const byWords = p.reveal !== 'Lines'
   const fade = { alpha: 1 }
   let g: OffscreenCanvasRenderingContext2D
   let body: Block = { font: '', tracking: 0, byWords, lines: [] }
   let label: Block | null = null
 
-  // Turns a layout into lines with clip boxes and per-word coloured segments.
+  // Turns a layout into lines with clip boxes and per-word coloured segments; lines sit on the
+  // side margin or centred (textAlign), the first line box's top at y0.
   function block(
     layout: TextLayout,
     tracking: number,
-    x0: number,
     y0: number,
     words: boolean,
     marked?: MarkedWord[]
@@ -85,6 +92,7 @@ const textReveal: TemplateFactory = (ctx) => {
       const top = Math.min(-ref.actualBoundingBoxAscent, -m.actualBoundingBoxAscent) - pad
       const bottom = Math.max(ref.actualBoundingBoxDescent, m.actualBoundingBoxDescent) + pad
       const y = y0 + line.y
+      const x = textLineX(ctx.width, line.width, align, side)
       return {
         y,
         clipTop: y + top,
@@ -100,7 +108,7 @@ const textReveal: TemplateFactory = (ctx) => {
             dx += g.measureText(seg.text).width
             return placed
           })
-          return { x: x0 + line.x + word.x, segments, piece: piece(), dy: 0 }
+          return { x: x + line.x + word.x, segments, piece: piece(), dy: 0 }
         }),
       }
     })
@@ -137,42 +145,55 @@ const textReveal: TemplateFactory = (ctx) => {
       await ctx.font(FAMILY)
       const weight = p.weight === 'Medium' ? '500' : '400'
       const maxWidth = ctx.width - side * 2
+      const margins = { top: margin.top * s, bottom: margin.bottom * s }
 
-      // Label, top-left.
       const labelText = (ctx.text.label ?? '').replace(/\s+/g, ' ').trim()
-      let labelBottom = margin.top * s
-      if (labelText) {
-        const size = LABEL.size * s
-        const layout = ctx.layoutText(labelText, {
-          family: FAMILY,
-          size,
-          lineHeight: 1.1,
-          maxWidth: Number.MAX_SAFE_INTEGER,
-        })
-        label = block(layout, 0, side, margin.top * s, false)
-        labelBottom = margin.top * s + layout.height + LABEL.gap * s
-      }
+      const labelLayout = labelText
+        ? ctx.layoutText(labelText, {
+            family: FAMILY,
+            size: LABEL.size * s,
+            lineHeight: 1.1,
+            maxWidth: Number.MAX_SAFE_INTEGER,
+          })
+        : null
+      // The label and the gap under it: the body always leaves this much room above it.
+      const labelSpace = labelLayout ? labelLayout.height + LABEL.gap * s : 0
 
-      // Body, bottom-left; shrinks to fit when a long text at a large size would overflow.
+      // Body; shrinks to fit when a long text at a large size would overflow.
       const { text, words } = parseAccents(ctx.text.body ?? '')
+      let bodyLayout: TextLayout | null = null
+      let bodySize = 0
       if (text.trim()) {
-        const room = ctx.height - margin.bottom * s - labelBottom
-        let size = (Number(p.size) || STORY_TYPE.size) * s
-        let layout!: TextLayout
+        const room = ctx.height - margins.bottom - margins.top - labelSpace
+        bodySize = (Number(p.size) || STORY_TYPE.size) * s
         for (let i = 0; i < 30; i++) {
-          layout = ctx.layoutText(text, {
+          bodyLayout = ctx.layoutText(text, {
             family: FAMILY,
             weight,
-            size,
+            size: bodySize,
             lineHeight: STORY_TYPE.lineHeight,
             maxWidth,
-            letterSpacing: STORY_TYPE.tracking * size,
+            letterSpacing: STORY_TYPE.tracking * bodySize,
           })
-          if (layout.height <= room) break
-          size *= 0.95
+          if (bodyLayout.height <= room) break
+          bodySize *= 0.95
         }
-        const top = ctx.height - margin.bottom * s - layout.height
-        body = block(layout, STORY_TYPE.tracking * size, side, top, byWords, words)
+      }
+
+      // Bottom: the body's last line box on the bottom margin, the label in the top corner.
+      // Top / Middle: label + gap + body placed as one block.
+      let labelTop = margins.top
+      let bodyTop = 0
+      if (position === 'Bottom') {
+        bodyTop = textBlockY(ctx.height, bodyLayout?.height ?? 0, position, margins)
+      } else {
+        const blockH = bodyLayout ? labelSpace + bodyLayout.height : (labelLayout?.height ?? 0)
+        labelTop = textBlockY(ctx.height, blockH, position, margins)
+        bodyTop = labelTop + labelSpace
+      }
+      if (labelLayout) label = block(labelLayout, 0, labelTop, false)
+      if (bodyLayout) {
+        body = block(bodyLayout, STORY_TYPE.tracking * bodySize, bodyTop, byWords, words)
       }
 
       // ── Timeline ─────────────────────────────────────────────────────────────────────────

@@ -1,9 +1,18 @@
 import { randomUUID } from 'node:crypto'
-import { open, rm, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { open, readdir, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import {
+  EXPORT_FORMATS,
+  EXPORT_PRESET_IDS,
+  exportSize,
+  type ExportFormat,
+  type ExportPreset,
+  type RenderExport,
+  type RenderWithExports,
+} from '@shared/render-exports.ts'
 import type { Aspect, Render, TemplateInputs } from '@shared/template.ts'
 import type { DB } from '../db/index.ts'
-import { extractFrame, probeStreams, retagBt709 } from '../lib/ffmpeg.ts'
+import { extractFrame, makeAnimatedWebp, makeGif, probeStreams, retagBt709 } from '../lib/ffmpeg.ts'
 import { moveFile } from '../lib/files.ts'
 import { notify } from '../lib/events.ts'
 import { fileUrl, fromLibraryPath, library, toLibraryPath } from '../library.ts'
@@ -123,9 +132,83 @@ async function validate(path: string, kind: Render['kind'], sizeBytes: number) {
   return { warnings, info }
 }
 
+// ── GIF / animated WebP exports ──────────────────────────────────────────────────────────────
+// Rebuildable derivatives of a video render, stored next to its MP4 and named after what they
+// contain ("slow-zoom-1a2b3c4d.480x853-15fps.gif") — a preset that changes size makes a new file.
+
+export class RenderExportError extends Error {
+  constructor(
+    public status: 404 | 409,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+const X_GIF_LIMIT = 15 * 1024 * 1024
+const EXPORT_NAME = /^\d+x\d+-\d+fps\.(gif|webp)$/
+
+function exportWarnings(format: ExportFormat, sizeBytes: number): string[] {
+  if (format === 'webp') return ['WebP isn’t accepted by X or Instagram — post the MP4 there']
+  if (sizeBytes > X_GIF_LIMIT) return ['Over X’s 15 MB GIF limit on the web — try a smaller size']
+  return []
+}
+
+// Library-relative path of an export, next to the render's MP4.
+function exportPath(r: RenderRow, format: ExportFormat, preset: ExportPreset) {
+  const { width, height, fps } = exportSize(r, preset)
+  return r.file_path!.replace(/\.mp4$/, `.${width}x${height}-${fps}fps.${format}`)
+}
+
 export function createRenderStore(db: DB) {
   const row = (id: string) =>
     db.prepare('SELECT * FROM renders WHERE id = ?').get(id) as RenderRow | undefined
+
+  // Exports being made, by "<render id>:<format>:<preset>" — progress for GET, and one ffmpeg
+  // run per file however many times it is asked for.
+  const exporting = new Map<string, { progress: number; done: Promise<RenderExport> }>()
+
+  const describeExport = (
+    r: RenderRow,
+    format: ExportFormat,
+    preset: ExportPreset,
+    file: { size: number; mtimeMs: number }
+  ): RenderExport => ({
+    format,
+    preset,
+    status: 'ready',
+    progress: null,
+    ...exportSize(r, preset),
+    url: fileUrl(exportPath(r, format, preset), String(Math.round(file.mtimeMs))),
+    sizeBytes: file.size,
+    warnings: exportWarnings(format, file.size),
+  })
+
+  async function listExports(r: RenderRow): Promise<RenderExport[]> {
+    if (r.kind !== 'video' || !r.file_path) return []
+    const found: RenderExport[] = []
+    for (const format of EXPORT_FORMATS) {
+      for (const preset of EXPORT_PRESET_IDS) {
+        const job = exporting.get(`${r.id}:${format}:${preset}`)
+        if (job) {
+          found.push({
+            format,
+            preset,
+            status: 'pending',
+            progress: job.progress,
+            ...exportSize(r, preset),
+            url: null,
+            sizeBytes: null,
+            warnings: [],
+          })
+          continue
+        }
+        const file = await stat(fromLibraryPath(exportPath(r, format, preset))).catch(() => null)
+        if (file?.size) found.push(describeExport(r, format, preset, file))
+      }
+    }
+    return found
+  }
 
   return {
     create(input: NewRender): Render {
@@ -154,6 +237,67 @@ export function createRenderStore(db: DB) {
     get(id: string): Render | undefined {
       const r = row(id)
       return r ? toRender(r) : undefined
+    },
+
+    // A render plus its GIF / WebP exports (made, or being made).
+    async detail(id: string): Promise<RenderWithExports | undefined> {
+      const r = row(id)
+      return r ? { ...toRender(r), exports: await listExports(r) } : undefined
+    },
+
+    // Makes (or reuses) a looping GIF / animated WebP of a finished video render.
+    async exportAnimation(
+      id: string,
+      format: ExportFormat,
+      preset: ExportPreset
+    ): Promise<RenderExport> {
+      const r = row(id)
+      if (!r) throw new RenderExportError(404, 'Render not found')
+      if (r.kind !== 'video') {
+        throw new RenderExportError(409, 'Only video renders can be exported as GIF or WebP')
+      }
+      if (r.status !== 'ready' || !r.file_path) {
+        throw new RenderExportError(409, 'Render has no finished file yet')
+      }
+
+      const key = `${id}:${format}:${preset}`
+      const running = exporting.get(key)
+      if (running) return running.done
+      const target = fromLibraryPath(exportPath(r, format, preset))
+      const existing = await stat(target).catch(() => null)
+      if (existing?.size) return describeExport(r, format, preset, existing)
+      // Checked again: another request may have started it while this one was looking.
+      const started = exporting.get(key)
+      if (started) return started.done
+
+      const job = { progress: 0 } as { progress: number; done: Promise<RenderExport> }
+      job.done = (async () => {
+        const scratch = join(library.tmp, `export-${id.slice(0, 8)}-${randomUUID().slice(0, 8)}`)
+        const tmp = `${scratch}.${format}`
+        const options = {
+          ...exportSize(r, preset),
+          durationMs: r.duration_ms,
+          onProgress: (fraction: number) => (job.progress = fraction),
+        }
+        try {
+          const source = fromLibraryPath(r.file_path!)
+          if (format === 'gif') await makeGif(source, tmp, `${scratch}.palette.png`, options)
+          else await makeAnimatedWebp(source, tmp, options)
+          await moveFile(tmp, target)
+        } finally {
+          await rm(tmp, { force: true })
+          await rm(`${scratch}.palette.png`, { force: true })
+        }
+        // Deleted while it was being made: don't leave an orphan behind.
+        if (!row(id)) {
+          await rm(target, { force: true })
+          throw new RenderExportError(404, 'Render not found')
+        }
+        notify('renders')
+        return describeExport(r, format, preset, await stat(target))
+      })().finally(() => exporting.delete(key))
+      exporting.set(key, job)
+      return job.done
     },
 
     list(filter: { postId?: string; limit?: number } = {}): Render[] {
@@ -261,6 +405,17 @@ export function createRenderStore(db: DB) {
         ).catch((err) => {
           if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
         })
+      }
+      // GIF / WebP exports are derivatives: rebuildable, so they go (not to trash).
+      if (r.file_path) {
+        const absolute = fromLibraryPath(r.file_path)
+        const prefix = `${basename(absolute, '.mp4')}.`
+        const names = await readdir(dirname(absolute)).catch(() => [] as string[])
+        for (const name of names) {
+          if (name.startsWith(prefix) && EXPORT_NAME.test(name.slice(prefix.length))) {
+            await rm(join(dirname(absolute), name), { force: true })
+          }
+        }
       }
       db.prepare('DELETE FROM renders WHERE id = ?').run(id)
       notify('renders')

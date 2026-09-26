@@ -23,15 +23,38 @@ export const sizeFor = (aspect: Aspect, width: number) => {
   return { width, height: Math.round((full.height / full.width) * width) }
 }
 
+export interface PreviewLoaded {
+  duration: number
+  frames: number
+  fps: number
+  // Where the preview is: a load keeps the time (clamped to the new duration).
+  t: number
+  // From the load() call to the new frame on the canvas.
+  ms: number
+}
+
 // Real-time preview on a visible canvas, drawn by a worker (the canvas is transferred to it).
 // A canvas can be transferred only once: create one controller per <canvas> element.
+//
+// load() is cheap to call on every change (a slider drag): calls are coalesced to one per
+// animation frame, the worker reuses the media it already decoded, keeps the current time and
+// play state, and shows the last frame until the new settings have drawn.
 export class PreviewController {
   private worker = newWorker()
+  private seq = 0
+  private pending: {
+    meta: TemplateMeta
+    inputs: TemplateInputs
+    width: number
+    since: number
+  } | null = null
+  private flushHandle = 0
+  private sent = new Map<number, number>() // seq → when the change was asked for
 
   constructor(
     canvas: HTMLCanvasElement,
     private handlers: {
-      onLoaded?: (info: { duration: number; frames: number; fps: number }) => void
+      onLoaded?: (info: PreviewLoaded) => void
       onTime?: (t: number, playing: boolean) => void
       onError?: (message: string) => void
     }
@@ -40,7 +63,7 @@ export class PreviewController {
     this.send({ type: 'preview', canvas: offscreen }, [offscreen])
     this.worker.onmessage = (event: MessageEvent<FromWorker>) => {
       const m = event.data
-      if (m.type === 'loaded') this.handlers.onLoaded?.(m)
+      if (m.type === 'loaded') this.loaded(m)
       else if (m.type === 'time') this.handlers.onTime?.(m.t, m.playing)
       else if (m.type === 'error') this.handlers.onError?.(m.message)
     }
@@ -52,13 +75,55 @@ export class PreviewController {
   }
 
   load(meta: TemplateMeta, inputs: TemplateInputs, previewWidth: number) {
-    const { width, height } = sizeFor(inputs.aspect, previewWidth)
-    this.send({ type: 'load', meta, inputs, width, height })
+    this.pending = { meta, inputs, width: previewWidth, since: performance.now() }
+    this.flushHandle ||= requestAnimationFrame(this.flush)
   }
+
+  private flush = () => {
+    this.flushHandle = 0
+    const next = this.pending
+    if (!next) return
+    this.pending = null
+    const seq = ++this.seq
+    this.sent.set(seq, next.since)
+    const { width, height } = sizeFor(next.inputs.aspect, next.width)
+    this.send({
+      type: 'load',
+      seq,
+      meta: next.meta,
+      inputs: next.inputs,
+      width,
+      height,
+    })
+  }
+
+  private loaded(m: Extract<FromWorker, { type: 'loaded' }>) {
+    const since = this.sent.get(m.seq) ?? performance.now()
+    // Loads the worker skipped for a newer one are shown by this one.
+    for (const seq of this.sent.keys()) if (seq <= m.seq) this.sent.delete(seq)
+    const end = performance.now()
+    // Visible in the DevTools performance panel (and measurable from tests).
+    performance.measure('Pullup preview', {
+      start: since,
+      end,
+      detail: { seq: m.seq, workerMs: m.ms, t: m.t },
+    })
+    this.handlers.onLoaded?.({
+      duration: m.duration,
+      frames: m.frames,
+      fps: m.fps,
+      t: m.t,
+      ms: Math.round(end - since),
+    })
+  }
+
   play = () => this.send({ type: 'play' })
   pause = () => this.send({ type: 'pause' })
   seek = (t: number) => this.send({ type: 'seek', t })
-  dispose = () => this.worker.terminate()
+  dispose = () => {
+    cancelAnimationFrame(this.flushHandle)
+    this.worker.terminate()
+  }
 }
 
 // What the render worker reads for each asset (a video's proxy is built on first use).

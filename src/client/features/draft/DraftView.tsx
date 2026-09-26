@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useBlocker, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import type { Platform, PostStatus } from '@shared/constants.ts'
 import type { Asset, Claim, PostDetail, Segment } from '@shared/types.ts'
+import { frameAssetIds } from '@shared/frames.ts'
 import { Button } from '../../components/Button/Button.tsx'
 import { EmptyState } from '../../components/EmptyState/EmptyState.tsx'
 import { Segmented } from '../../components/Segmented/Segmented.tsx'
@@ -30,8 +31,8 @@ const BASIS_LABEL: Record<Claim['basis'], string> = {
 }
 
 const sameContent = (a: Segment[], b: Segment[]) =>
-  JSON.stringify(a.map((s) => [s.text, s.assetId ?? null, s.template ?? null])) ===
-  JSON.stringify(b.map((s) => [s.text, s.assetId ?? null, s.template ?? null]))
+  JSON.stringify(a.map((s) => [s.text, frameAssetIds(s), s.template ?? null])) ===
+  JSON.stringify(b.map((s) => [s.text, frameAssetIds(s), s.template ?? null]))
 
 export function DraftView() {
   const { id } = useParams({ from: '/drafts/$id' })
@@ -100,7 +101,9 @@ function DraftEditor({
   const sources = post.sourceAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
   const media = post.mediaAssetIds.map((id) => byId.get(id)).filter((a): a is Asset => !!a)
   const shownMedia = config.frames
-    ? segments.map((s) => s.assetId && byId.get(s.assetId)).filter((a): a is Asset => !!a)
+    ? [...new Set(segments.flatMap(frameAssetIds))]
+        .map((id) => byId.get(id))
+        .filter((a): a is Asset => !!a)
     : media
   const privateMedia = shownMedia.filter((a) => a.visibility === 'private')
 
@@ -245,6 +248,7 @@ function DraftEditor({
                 segments={segments}
                 caption={caption}
                 sources={sources}
+                postMedia={media}
                 byId={byId}
                 copied={copied}
                 dirty={dirty}

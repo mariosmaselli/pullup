@@ -1,16 +1,21 @@
 import type { TemplateMeta } from '@shared/template.ts'
+import { MEDIA_SIZE_PARAMS, TEXT_POSITION_PARAMS } from '../_lib/layout.ts'
+
+// Scale and position as everywhere else (same keys and labels), applied to each slide within its
+// Media size: Fill covers the frame × scale, Fit scales the shared window.
+const { scale, focusX, focusY } = MEDIA_SIZE_PARAMS
 
 export const meta: TemplateMeta = {
   id: 'crossfade-slideshow',
   name: 'Crossfade slideshow',
   description:
-    '2–10 images or clips with a slow Ken Burns drift and soft crossfades — full bleed or framed on a plain ground. Optional title over the first slide, a caption and a slide counter.',
-  version: 2,
+    '2–20 images or clips with a slow Ken Burns drift and soft crossfades — full bleed or framed on a plain ground, scaled and placed as you like. Optional title over the first slide, a caption and a slide counter, set at the top, middle or bottom.',
+  version: 4,
   kind: 'video',
   aspects: ['9:16', '4:5', '1:1'],
   fps: 30,
   duration: { default: 8, min: 3, max: 30 },
-  media: { min: 2, max: 10, kinds: ['image', 'video'], label: 'Slides' },
+  media: { min: 2, max: 20, kinds: ['image', 'video'], label: 'Slides' },
   text: {
     title: {
       label: 'Title (first slide)',
@@ -30,10 +35,14 @@ export const meta: TemplateMeta = {
   params: {
     framing: {
       type: 'select',
-      label: 'Framing',
+      label: 'Media size',
       options: ['Auto', 'Fill', 'Fit'],
       default: 'Auto',
     },
+    scale,
+    focusX,
+    focusY,
+    ...TEXT_POSITION_PARAMS,
     crossfade: {
       type: 'number',
       label: 'Crossfade (s)',
@@ -51,7 +60,7 @@ export const meta: TemplateMeta = {
       default: 'Regular',
     },
     counter: { type: 'boolean', label: 'Slide counter', default: true },
-    background: { type: 'color', label: 'Background (Fit)', default: '#101010' },
+    background: { type: 'color', label: 'Background', default: '#101010' },
     color: { type: 'color', label: 'Text', default: '#ffffff' },
     dim: {
       type: 'number',

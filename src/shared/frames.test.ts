@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Render } from './template.ts'
-import { renderForFrame, renderMatchesFrame } from './frames.ts'
+import { carryOverFrames, frameAssetIds, renderForFrame, renderMatchesFrame } from './frames.ts'
 
 const render = (over: Partial<Render> & { text?: string; media?: string[] } = {}): Render => ({
   id: over.id ?? 'r1',
@@ -71,5 +71,66 @@ describe('renderMatchesFrame', () => {
     const newer = render({ id: 'new', text: 'Other', segmentIndex: 0 })
     expect(renderForFrame([old, newer], frame, 0)).toEqual({ render: old, current: true })
     expect(renderForFrame([newer], frame, 0)).toEqual({ render: newer, current: false })
+  })
+})
+
+describe('frames with several media', () => {
+  it('reads the media list, falling back to the single assetId of older frames', () => {
+    expect(frameAssetIds({ text: '', assetId: 'a', assetIds: ['a', 'b'] })).toEqual(['a', 'b'])
+    expect(frameAssetIds({ text: '', assetId: 'a' })).toEqual(['a'])
+    expect(frameAssetIds({ text: '', assetId: null, kind: 'text' })).toEqual([])
+    // Inconsistent writers never lose the frame's media.
+    expect(frameAssetIds({ text: '', assetId: 'a', assetIds: [] })).toEqual(['a'])
+    expect(frameAssetIds({ text: '', assetId: 'c', assetIds: ['a', 'b'] })).toEqual(['c', 'a', 'b'])
+  })
+
+  it('matches a render only with the same media in the same order', () => {
+    const frame = {
+      text: 'Hello',
+      assetId: 'a',
+      kind: 'image' as const,
+      assetIds: ['a', 'b', 'c'],
+      template: { id: 'text-story' },
+    }
+    expect(renderMatchesFrame(render({ media: ['a', 'b', 'c'] }), frame)).toBe(true)
+    expect(renderMatchesFrame(render({ media: ['a', 'c', 'b'] }), frame)).toBe(false)
+    expect(renderMatchesFrame(render({ media: ['a', 'b'] }), frame)).toBe(false)
+    expect(renderMatchesFrame(render({ media: ['a'] }), frame)).toBe(false)
+    // An older frame with only assetId still matches its one-media render.
+    const old = { text: 'Hello', assetId: 'a', kind: 'image' as const }
+    expect(renderMatchesFrame(render({ media: ['a'] }), old)).toBe(true)
+  })
+
+  it('carries media lists and templates over to AI-revised frames by their first media', () => {
+    const slideshow = { id: 'crossfade-slideshow', params: { counter: false } }
+    const previous = [
+      { text: 'Intro', assetId: null, kind: 'text' as const, template: { id: 'text-reveal' } },
+      {
+        text: 'Slides',
+        assetId: 'a',
+        kind: 'image' as const,
+        assetIds: ['a', 'b'],
+        template: slideshow,
+      },
+      { text: 'Clip', assetId: 'v', kind: 'video' as const, assetIds: ['v'] },
+    ]
+    const revised = carryOverFrames(previous, [
+      // Moved to the front: follows its media, not its position.
+      { text: 'Slides!', assetId: 'a', kind: 'image' },
+      { text: 'Intro!', assetId: null, kind: 'text' },
+      { text: 'New', assetId: 'x', kind: 'image' },
+      // The same first media twice: only the first copy inherits the list.
+      { text: 'Slides again', assetId: 'a', kind: 'image' },
+    ])
+    expect(revised).toEqual([
+      { text: 'Slides!', assetId: 'a', kind: 'image', assetIds: ['a', 'b'], template: slideshow },
+      // Text frames only follow the text frame at their position (frame 2 was the slideshow).
+      { text: 'Intro!', assetId: null, kind: 'text' },
+      { text: 'New', assetId: 'x', kind: 'image' },
+      { text: 'Slides again', assetId: 'a', kind: 'image' },
+    ])
+    expect(carryOverFrames(previous, [{ text: 'Intro?', assetId: null, kind: 'text' }])[0]).toEqual(
+      { text: 'Intro?', assetId: null, kind: 'text', template: { id: 'text-reveal' } }
+    )
   })
 })

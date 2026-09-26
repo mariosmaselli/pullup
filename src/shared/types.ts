@@ -168,11 +168,16 @@ export interface Claim {
 }
 
 // One X post in a thread, the LinkedIn post, an Instagram story frame or carousel slide.
-// Frames and slides can show an asset (assetId) — X and LinkedIn media are attached per post.
+// Frames and slides can show media — X and LinkedIn media are attached per post.
+// Read a frame's media with frameAssetIds() (src/shared/frames.ts), never assetId alone.
 export interface Segment {
   text: string
+  // The frame's first media (and its kind): kept for the AI and older revisions.
   assetId?: string | null
   kind?: SegmentKind | null
+  // Every image/video the frame shows, in order (assetIds[0] === assetId). Absent on older
+  // revisions and text frames.
+  assetIds?: string[] | null
   // Instagram frames/slides: which template renders this frame, and its settings.
   template?: FrameTemplate | null
 }

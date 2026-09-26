@@ -262,7 +262,8 @@ describe('ai', () => {
     expect(story.current?.caption).toBeNull()
     expect(story.current?.segments).toEqual([
       { text: 'New hero experiment', assetId: null, kind: 'text' },
-      { text: 'It grows where you move', assetId, kind: 'video' },
+      // assetIds lists the frame's media (the AI picks one; Mario can add more in the editor).
+      { text: 'It grows where you move', assetId, kind: 'video', assetIds: [assetId] },
       // An asset the AI made up becomes a text frame.
       { text: 'Invented frame', assetId: null, kind: 'text' },
     ])
@@ -395,6 +396,94 @@ describe('ai', () => {
       kind: 'text',
     })
     expect(restored.mediaAssetIds).toEqual([])
+  })
+
+  it('keeps a frame’s extra media and template when the AI revises its text', async () => {
+    const upload = async (name: string, color: string) => {
+      const png = join(library.root, name)
+      execFileSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        `color=c=${color}:s=200x150`,
+        '-frames:v',
+        '1',
+        png,
+      ])
+      const res = await app.request('/api/assets/upload', {
+        method: 'POST',
+        body: new Uint8Array(readFileSync(png)),
+        headers: { 'Content-Type': 'image/png', 'X-File-Name': name },
+      })
+      return ((await res.json()) as CaptureResult).asset.id
+    }
+    // Picked by Mario from the library: not part of the idea's material.
+    const first = await upload('slide-a.png', 'navy')
+    const second = await upload('slide-b.png', 'olive')
+    await processor.idle()
+
+    const idea = ideas.find((i) => i.angle === 'technical')!
+    const { postIds } = (await (
+      await app.request(`/api/ideas/${idea.id}/draft`, json({ platforms: ['ig_story'] }))
+    ).json()) as { postIds: string[] }
+    const storyId = postIds[0]!
+    const slideshow = { id: 'crossfade-slideshow', params: { counter: false }, duration: 10 }
+    await app.request(
+      `/api/posts/${storyId}/revisions`,
+      json({
+        segments: [
+          { text: 'Three things', assetIds: [assetId, first, second], template: slideshow },
+          { text: 'Plain words', template: { id: 'text-reveal' } },
+          { text: 'Two stills', assetIds: [first, second] },
+        ],
+      })
+    )
+
+    const original = outputs['revise a draft']!
+    outputs['revise a draft'] = () => ({
+      format: 'story_seq',
+      segments: [
+        // The AI returns one assetId per frame.
+        { text: 'Three things, shorter', assetId, kind: 'video' },
+        { text: 'Plainer words', assetId: null, kind: 'text' },
+        // A different first media: Mario's slideshow isn't forced onto it.
+        { text: 'One still', assetId: second, kind: 'image' },
+      ],
+      caption: null,
+      claims: [],
+      questions: [],
+    })
+    try {
+      const res = await app.request(
+        `/api/posts/${storyId}/revise`,
+        json({ instruction: 'tighter' })
+      )
+      expect(res.status).toBe(200)
+      const post = (await res.json()) as PostDetail
+      expect(post.current?.segments).toEqual([
+        {
+          text: 'Three things, shorter',
+          assetId,
+          kind: 'video',
+          assetIds: [assetId, first, second],
+          template: slideshow,
+        },
+        { text: 'Plainer words', assetId: null, kind: 'text', template: { id: 'text-reveal' } },
+        { text: 'One still', assetId: second, kind: 'image', assetIds: [second] },
+      ])
+      expect(post.mediaAssetIds).toEqual([assetId, first, second])
+
+      // The AI saw every media of the slideshow, first one as the frame's asset.
+      const text = calls.at(-1)!.content.find((c) => c.type === 'text')
+      expect(text && 'text' in text && text.text).toContain(
+        `[1] (video asset=${assetId}; slideshow of 3: ${assetId}, ${first}, ${second}) Three things`
+      )
+    } finally {
+      outputs['revise a draft'] = original
+    }
   })
 
   it('keeps manual edits and AI revisions as history', async () => {

@@ -5,7 +5,7 @@ import type { Ai } from '../ai/index.ts'
 import type { PostStore } from '../services/posts.ts'
 import type { RenderStore } from '../services/renders.ts'
 import { zipFiles } from '../lib/zip.ts'
-import { renderForFrame } from '@shared/frames.ts'
+import { MAX_FRAME_MEDIA, renderForFrame } from '@shared/frames.ts'
 import { fromLibraryPath } from '../library.ts'
 
 const statusQuery = z
@@ -21,6 +21,8 @@ const revisionBody = z.object({
         text: z.string().max(4000),
         assetId: z.string().nullable().optional(),
         kind: z.enum(SEGMENT_KINDS).nullable().optional(),
+        // The frame's media in order (Instagram); cleaned and deduplicated by the post store.
+        assetIds: z.array(z.string()).max(MAX_FRAME_MEDIA).nullable().optional(),
         template: z
           .object({
             id: z.string().regex(/^[a-z0-9-]+$/),

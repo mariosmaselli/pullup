@@ -1,9 +1,10 @@
 import { rm } from 'node:fs/promises'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { EXPORT_FORMATS, EXPORT_PRESET_IDS } from '@shared/render-exports.ts'
 import { ASPECT_SIZE, type Aspect } from '@shared/template.ts'
 import { BodyTooLargeError, streamBodyToFile } from '../lib/stream-body.ts'
-import type { RenderStore } from '../services/renders.ts'
+import { RenderExportError, type RenderStore } from '../services/renders.ts'
 
 const ASPECTS = Object.keys(ASPECT_SIZE) as [Aspect, ...Aspect[]]
 const MAX_RENDER_BYTES = 500 * 1024 * 1024
@@ -37,14 +38,33 @@ const createBody = z.object({
   segmentIndex: z.number().int().min(0).nullable().optional(),
 })
 
+const exportBody = z.object({
+  format: z.enum(EXPORT_FORMATS),
+  preset: z.enum(EXPORT_PRESET_IDS),
+})
+
 export function renderRoutes(renders: RenderStore) {
   return (
     new Hono()
       .get('/', (c) => c.json(renders.list({ postId: c.req.query('post') || undefined })))
 
-      .get('/:id', (c) => {
-        const render = renders.get(c.req.param('id'))
+      // The render plus its GIF / WebP exports (ready ones, and any being made with progress).
+      .get('/:id', async (c) => {
+        const render = await renders.detail(c.req.param('id'))
         return render ? c.json(render) : c.json({ error: 'Render not found' }, 404)
+      })
+
+      // Makes a looping GIF / animated WebP of a video render, or returns the one already made.
+      // Answers when the file is ready; GET /:id shows progress meanwhile.
+      .post('/:id/exports', async (c) => {
+        const { format, preset } = exportBody.parse(await c.req.json())
+        try {
+          return c.json(await renders.exportAnimation(c.req.param('id'), format, preset))
+        } catch (err) {
+          if (err instanceof RenderExportError) return c.json({ error: err.message }, err.status)
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: `Export failed: ${message.slice(0, 300)}` }, 500)
+        }
       })
 
       // Step 1: register what is being rendered (so the inputs are kept even if encoding fails).

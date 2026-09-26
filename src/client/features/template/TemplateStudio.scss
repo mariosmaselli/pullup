@@ -79,9 +79,11 @@
   }
 }
 
+// object-fit: while a format change is set up, the last frame keeps its proportions.
 .template-studio__canvas {
   width: 100%;
   height: 100%;
+  object-fit: contain;
 }
 
 .template-studio__overlay {
